@@ -242,7 +242,6 @@ function handleResize() {
 }
 
 onMounted(() => {
-  taskStore.loadTasks()  // 加载最新数据
   refreshCharts()
   window.addEventListener('resize', handleResize)
 })
