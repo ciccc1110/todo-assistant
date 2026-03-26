@@ -6,7 +6,7 @@
         <div class="logo">
           <div class="logo-icon">📋</div>
         </div>
-        <div class="title">全部待办任务</div>
+        <div class="title">任务列表</div>
       </div>
       <div class="header-right">
         <div class="user-info">{{ userStore.userName }}</div>
@@ -699,10 +699,17 @@ onMounted(() => {
 
     .user-info {
       padding: 6px 12px;
-      background: #f5f7fa;
-      border-radius: 6px;
+      background-color: #F5F7FA;
+      border-radius: 20px;
       font-size: 14px;
       color: #606266;
+      font-weight: 500;
+      margin-right: 8px;
+
+      &::before {
+        content: '👤';
+        font-size: 16px;
+      }
     }
   }
 }
@@ -775,7 +782,7 @@ onMounted(() => {
   }
 
   &.task-completed {
-    opacity: 0.85;
+    opacity: 0.5;
     border-left-color: #C0C6CC;
 
     .task-content {
@@ -852,7 +859,7 @@ onMounted(() => {
   margin-bottom: 20px;
 
   .task-content {
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 500;
     color: #303133;
     margin-bottom: 10px;

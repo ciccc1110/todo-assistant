@@ -1,49 +1,65 @@
 <template>
   <div class="statistics">
-    <el-container>
-      <el-header>
-        <div class="header-left">
-          <el-button link @click="$router.push('/chat')">
-            <el-icon><ArrowLeft /></el-icon>
-          </el-button>
-          <span class="title">统计看板</span>
+    <!-- 顶部导航栏 - 与TaskList/BotChat保持完全一致 -->
+    <div class="header">
+      <div class="header-left">
+        <div class="logo">
+          <div class="logo-icon">📋</div>
         </div>
-        <div class="header-right">
-          <div class="user-info">{{ userStore.userName }}</div>
-          <el-button link @click="handleRefresh">
-            <el-icon><Refresh /></el-icon>
-            刷新
-          </el-button>
-        </div>
-      </el-header>
+        <div class="title">统计看板</div>
+      </div>
+      <div class="header-right">
+        <div class="user-info">{{ userStore.userName }}</div>
+        <el-button text @click="handleRefresh">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+        <el-button text @click="handleViewChat">
+          <el-icon><ChatDotRound /></el-icon>
+          对话
+        </el-button>
+        <el-button text @click="handleViewTasks">
+          <el-icon><List /></el-icon>
+          任务列表
+        </el-button>
+        <el-button text @click="handleLogout" type="danger">退出</el-button>
+      </div>
+    </div>
 
-      <el-main>
-        <!-- 总览卡片 -->
-        <div class="overview-cards">
-          <StatCard title="总任务数" :value="taskStore.allTasks.length" />
-          <StatCard title="已完成" :value="taskStore.completedTasks.length" />
-          <StatCard title="待办数" :value="taskStore.pendingTasks.length" />
-        </div>
 
-        <!-- 完成率趋势图 -->
-        <div class="chart-container">
-          <h3>完成率趋势（近7天）</h3>
-          <div ref="trendChart" class="chart"></div>
-        </div>
 
-        <!-- 任务分类统计 -->
-        <div class="chart-container">
-          <h3>任务分类统计</h3>
-          <div ref="categoryChart" class="chart"></div>
-        </div>
+    <!-- 主内容区 -->
+    <div class="main-content">
 
-        <!-- 优先级分布 -->
-        <div class="chart-container">
-          <h3>优先级分布</h3>
-          <div ref="priorityChart" class="chart"></div>
-        </div>
-      </el-main>
-    </el-container>
+      <div v-if="loading" class="loading">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>加载中...</span>
+      </div>
+      <!-- 总览卡片 -->
+      <div class="overview-cards">
+        <StatCard title="总任务数" :value="taskStore.allTasks.length" />
+        <StatCard title="已完成" :value="taskStore.completedTasks.length" />
+        <StatCard title="待办数" :value="taskStore.pendingTasks.length" />
+      </div>
+
+      <!-- 完成率趋势图 -->
+      <div class="chart-container">
+        <h3>完成率趋势（近7天）</h3>
+        <div ref="trendChart" class="chart"></div>
+      </div>
+
+      <!-- 任务分类统计 -->
+      <div class="chart-container">
+        <h3>任务分类统计</h3>
+        <div ref="categoryChart" class="chart"></div>
+      </div>
+
+      <!-- 优先级分布 -->
+      <div class="chart-container">
+        <h3>优先级分布</h3>
+        <div ref="priorityChart" class="chart"></div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -54,9 +70,10 @@ import { useUserStore } from '@/stores/user'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
+import { Refresh, List, ChatDotRound } from '@element-plus/icons-vue'
 import StatCard from '@/components/StatCard.vue'
 import { getTaskList } from '@/api/task'
+import { Loading } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const taskStore = useTaskStore()
@@ -65,6 +82,7 @@ const userStore = useUserStore()
 const trendChart = ref(null)
 const categoryChart = ref(null)
 const priorityChart = ref(null)
+const loading = ref(false)
 
 let trendChartInstance = null
 let categoryChartInstance = null
@@ -74,6 +92,7 @@ console.log('📊 [Statistics] 组件初始化')
 
 // 从API加载任务数据
 async function loadTasksFromAPI() {
+  loading.value = true
   try {
     console.log('🔄 [Statistics] 开始从API加载任务数据')
     console.log('👤 [Statistics] 当前用户ID:', userStore.userId)
@@ -112,6 +131,8 @@ async function loadTasksFromAPI() {
     
     ElMessage.error('加载任务数据失败：' + error.message)
     return []
+  } finally {
+    loading.value = false
   }
 }
 
@@ -289,6 +310,22 @@ function handleRefresh() {
   })
 }
 
+function handleViewTasks() {
+  router.push('/tasks')
+}
+
+function handleViewChat() {
+  router.push('/chat')
+}
+
+function handleLogout() {
+  if (confirm('确定要退出登录吗？')) {
+    userStore.logout()
+    ElMessage.success('已退出登录')
+    router.push('/login')
+  }
+}
+
 // 响应式调整图表大小
 function handleResize() {
   trendChartInstance?.resize()
@@ -339,28 +376,42 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .statistics {
   height: 100vh;
-  background: #F5F7FA;
+  display: flex;
+  flex-direction: column;
+  background-color: #f5f7fa;
 
-  .el-container {
-    height: 100%;
-  }
-
-  .el-header {
+  // 统一的导航栏样式
+  .header {
+    background: white;
+    padding: 16px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #fff;
-    border-bottom: 1px solid #DCDFE6;
-    padding: 0 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    flex-shrink: 0;
 
     .header-left {
       display: flex;
       align-items: center;
       gap: 12px;
 
+      .logo {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        .logo-icon {
+          font-size: 20px;
+        }
+      }
+
       .title {
-        font-size: 16px;
-        font-weight: bold;
+        font-size: 18px;
+        font-weight: 600;
         color: #303133;
       }
     }
@@ -368,19 +419,41 @@ onUnmounted(() => {
     .header-right {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 6px; // 统一按钮间距
 
       .user-info {
+        padding: 6px 12px;
+        background-color: #F5F7FA;
+        border-radius: 20px;
         font-size: 14px;
         color: #606266;
         font-weight: 500;
+        margin-right: 8px;
+
+        &::before {
+          content: '👤';
+          font-size: 16px;
+        }
+      }
+
+      // 统一按钮样式
+      .el-button {
+        font-size: 14px;
+        padding: 8px 12px;
+        
+        .el-icon {
+          margin-right: 4px;
+        }
       }
     }
   }
 
-  .el-main {
+  // 主内容区
+  .main-content {
+    flex: 1;
     padding: 24px;
     overflow-y: auto;
+    position: relative;
 
     .overview-cards {
       display: grid;
@@ -406,6 +479,31 @@ onUnmounted(() => {
         width: 100%;
         height: 300px;
       }
+    }
+  }
+
+  .loading{
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #f5f7fa;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;  // 改为100%
+    color: #909399;
+
+    .el-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    p {
+      font-size: 16px;
+      margin-bottom: 24px;
     }
   }
 }

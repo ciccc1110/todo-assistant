@@ -12,7 +12,7 @@
         <div class="user-info">{{ userStore.userName }}</div>
         <el-button text @click="handleViewTasks">
           <el-icon><List /></el-icon>
-          全部任务
+          任务列表
         </el-button>
         <el-button text @click="handleViewStatistics">
           <el-icon><DataAnalysis /></el-icon>
