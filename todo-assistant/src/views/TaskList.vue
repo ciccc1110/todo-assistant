@@ -51,6 +51,7 @@
           <el-option label="全部" value="" />
           <el-option label="进行中" value="进行中" />
           <el-option label="已完成" value="已完成" />
+          <el-option label="已过期" value="已过期" />
         </el-select>
 
         <el-select
@@ -133,6 +134,7 @@
           class="task-card"
           :class="{
             'task-completed': task.status === '已完成',
+            'task-expired': task.status === '已过期',
             'task-high': task.importance === '高',
             'task-medium': task.importance === '中',
             'task-low': task.importance === '低'
@@ -145,7 +147,7 @@
             <div class="task-category">{{ task.category }}</div>
             <div class="task-status">
               <el-tag
-                :type="task.status === '已完成' ? 'success' : 'primary'"
+                :type="task.status === '已完成' ? 'success' : (task.status === '已过期' ? 'danger' : 'primary')"
                 size="small"
               >
                 {{ task.status }}
@@ -158,13 +160,20 @@
             <div v-if="task.description" class="task-description">
               {{ task.description }}
             </div>
+            <!-- ✅ 新增：逾期提示 -->
+            <div v-if="isExpiredTask(task)" class="task-expired-hint">
+              <el-icon><Warning /></el-icon>
+              此任务已逾期
+            </div>
           </div>
 
           <div class="task-footer">
             <div 
               class="task-deadline" 
               v-if="task.deadline"
-              :class="{ warning: isDeadlineNear(task.deadline) }"
+              :class="{ warning: isDeadlineNear(task.deadline),
+                expired: isExpiredTask(task)
+               }"
             >
               <el-icon><Clock /></el-icon>
               {{ isDeadlineNear(task.deadline) ? '即将到期: ' : '截止: ' }}
@@ -249,6 +258,7 @@
           <el-select v-model="editForm.status" placeholder="请选择状态" style="width: 100%">
             <el-option label="进行中" value="进行中" />
             <el-option label="已完成" value="已完成" />
+            <el-option label="已过期" value="已过期" />
           </el-select>
         </el-form-item>
         <el-form-item label="描述">
@@ -306,6 +316,7 @@ import {
   RefreshLeft,
   DataAnalysis
 } from '@element-plus/icons-vue'
+import { Warning } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -446,6 +457,12 @@ const hasActiveFilters = computed(() => {
   return !!(filters.date || filters.status || filters.importance || filters.category || filters.keyword)
 })
 
+// 判断任务是否逾期
+const isExpiredTask = (task) => {
+  if (task.status === '已完成' || task.status === '进行中') return false
+  return new Date(task.deadline) < new Date()
+}
+
 // 重置筛选条件
 const handleResetFilters = () => {
   filters.date = ''
@@ -513,7 +530,7 @@ const handleViewStatistics = () => {
 // 切换任务状态
 const handleToggleStatus = async (task) => {
   try {
-    const newStatus = task.status === '已完成' ? '进行中' : '已完成'
+    const newStatus = task.status === '已完成' ? '进行中' : (task.status ==='已过期' ? '已完成' : '已完成')
     
     console.log('🔄 [TaskList] 切换任务状态:', task.id, newStatus)
     
@@ -825,7 +842,6 @@ onMounted(() => {
     gap: 5px;
 
     &::before {
-      content: "●";
       font-size: 8px;
     }
 
@@ -895,6 +911,14 @@ onMounted(() => {
     &.warning {
       color: #f56c6c;
       font-weight: 500;
+
+      .el-icon {
+        color: #f56c6c;
+      }
+    }
+    &.expired {
+      color: #f56c6c;
+      font-weight: 600;
 
       .el-icon {
         color: #f56c6c;
@@ -980,6 +1004,23 @@ onMounted(() => {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+.task-expired-hint {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #fef0f0 0%, #fde2e2 100%);
+  border-radius: 6px;
+  color: #f56c6c;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 3px solid #f56c6c;
+
+  .el-icon {
+    font-size: 16px;
   }
 }
 </style>
