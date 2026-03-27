@@ -44,17 +44,17 @@ export const useTaskStore = defineStore('task', () => {
     })
   )
 
-    // 计算属性：准时完成率（截止时间前主动完成的任务 / 总完成任务数 × 100%）
+  // 计算属性：准时完成率（在截止时间前完成的任务 / 已完成任务总数）
   const onTimeCompletionRate = computed(() => {
     const completed = completedTasks.value
     if (completed.length === 0) return 0
 
-    // 准时完成：在截止时间前主动标记完成的任务（updated_at < deadline）
+    // 准时完成：已完成且 deadline > completed_at 的任务
     const onTimeCompleted = completed.filter(task => {
       if (!task.deadline || !task.updatedAt) return false
-      const updatedAt = new Date(task.updatedAt)
-      const deadline = new Date(task.deadline)
-      return updatedAt <= deadline
+      const completedAt = new Date(task.updatedAt) // 任务完成时间（更新时间）
+      const deadline = new Date(task.deadline) // 截止时间
+      return completedAt < deadline // 在截止时间前完成
     })
 
     const rate = (onTimeCompleted.length / completed.length) * 100

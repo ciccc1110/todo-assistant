@@ -181,6 +181,11 @@
               {{ isDeadlineNear(task.deadline) ? '即将到期: ' : '截止: ' }}
               {{ formatDeadline(task.deadline) }}
             </div>
+            <!-- 无截止时间时显示提示 -->
+            <div v-else class="task-deadline-empty">
+              <el-icon><Warning /></el-icon>
+              <span>未设置截止时间</span>
+            </div>
             <div class="task-actions">
               <el-button
                 text
@@ -255,6 +260,11 @@
             format="YYYY-MM-DD HH:mm"
             value-format="YYYY-MM-DD HH:mm"
           />
+          <!-- 截止日期为空时的提示 -->
+          <div v-if="!editForm.deadline" class="deadline-tip">
+            <el-icon size="14"><Warning /></el-icon>
+            <span>截止时间为空，建议设置截止时间以便更好地管理任务</span>
+          </div>
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="editForm.status" placeholder="请选择状态" style="width: 100%">
@@ -1048,6 +1058,51 @@ onMounted(() => {
 
   .el-icon {
     font-size: 16px;
+  }
+}
+
+.deadline-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #E6A23C;
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #FFF9E6 0%, #FFFBF0 100%);
+  border-radius: 6px;
+  border-left: 3px solid #E6A23C;
+  box-shadow: 0 1px 3px rgba(230, 162, 60, 0.1);
+  
+  .el-icon {
+    flex-shrink: 0;
+  }
+  
+  span {
+    flex: 1;
+    line-height: 1.5;
+  }
+}
+.task-deadline-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #E6A23C;
+  background: linear-gradient(135deg, #FFF9E6 0%, #FFFBF0 100%);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-left: 2px solid #E6A23C;
+  box-shadow: 0 1px 2px rgba(230, 162, 60, 0.1);
+  
+  .el-icon {
+    font-size: 14px;
+    color: #E6A23C;
+  }
+  
+  span {
+    font-weight: 500;
+    line-height: 1.5;
   }
 }
 </style>

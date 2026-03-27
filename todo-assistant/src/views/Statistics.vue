@@ -39,7 +39,7 @@
       <div class="overview-cards">
         <StatCard title="总任务数" :value="taskStore.allTasks.length" />
         <StatCard title="已完成" :value="taskStore.completedTasks.length" />
-        <StatCard title="待办数" :value="taskStore.pendingTasks.length" />
+        <StatCard title="待办数" :value="taskStore.pendingTasks.length - taskStore.expiredTasks.length" />
         <StatCard title="已过期" :value="taskStore.expiredTasks.length" />
       </div>
       
@@ -69,6 +69,11 @@
         <div ref="trendChart" class="chart"></div>
       </div>
 
+      <!-- 任务增长率（近7天） -->
+      <div class="chart-container">
+        <h3>任务增长率（近7天）</h3>
+        <div ref="growthChart" class="chart"></div>
+      </div>
       <!-- 任务分类统计 -->
       <div class="chart-container">
         <h3>任务分类统计</h3>
@@ -103,11 +108,13 @@ const userStore = useUserStore()
 const trendChart = ref(null)
 const categoryChart = ref(null)
 const priorityChart = ref(null)
+const growthChart = ref(null)
 const loading = ref(false)
 
 let trendChartInstance = null
 let categoryChartInstance = null
 let priorityChartInstance = null
+let growthChartInstance = null
 
 
 // 计算完成率：已完成 / 总任务数 × 100%
@@ -117,6 +124,20 @@ const completionRate = computed(() => {
   if (total === 0) return 0
   return Math.round((completed / total) * 100)
 })
+
+
+// 计算逾期率
+const overdueRate = computed(() => {
+  const total = taskStore.allTasks.length
+  const expired = taskStore.tasks.filter(task => {
+    if (!task.deadline || task.status === '已完成') return false
+    const now = new Date()
+    const deadline = new Date(task.deadline)
+    return now > deadline
+  }).length
+  return total > 0 ? Math.round((expired / total) * 100) : 0
+})
+
 
 console.log('📊 [Statistics] 组件初始化')
 
@@ -176,37 +197,68 @@ function initTrendChart() {
 
   trendChartInstance = echarts.init(trendChart.value)
 
-  // 计算近7天的完成数据
+  // 计算近7天的完成率数据
   const last7Days = []
-  const completedCount = []
+  const completionRates = []
 
   for (let i = 6; i >= 0; i--) {
     const date = new Date()
     date.setDate(date.getDate() - i)
-    const dateStr = date.toISOString().split('T')[0]
-    last7Days.push(dateStr.slice(5))
+    // 使用本地时间格式化日期，避免时区问题
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const dateStr = `${year}-${month}-${day}`  // ✅ 本地时间
+    
+    // 显示格式：MM-DD
+    const displayDate = `${month}-${day}`
+    last7Days.push(displayDate)
 
-    const count = taskStore.completedTasks.filter(task => {
-      const taskDate = new Date(task.updatedAt || task.createdAt).toISOString().split('T')[0]
-      return taskDate === dateStr
-    }).length
+    // 计算截止到当天的累计完成率
+    // 分子：截止到当天（含当天）已完成的任务总数
+    // 分母：截止到当天（含当天）创建的任务总数
+    
+    const tasksCreatedBeforeOrOnDate = taskStore.tasks.filter(task => {
+      const taskDate = new Date(task.createdAt)
+      const taskYear = taskDate.getFullYear()
+      const taskMonth = String(taskDate.getMonth() + 1).padStart(2, '0')
+      const taskDay = String(taskDate.getDate()).padStart(2, '0')
+      const taskDateStr = `${taskYear}-${taskMonth}-${taskDay}`
+      return taskDateStr <= dateStr
+    })
 
-    completedCount.push(count)
+      // 修正后：直接使用 status 判断 ✅
+      const tasksCompletedBeforeOrOnDate = tasksCreatedBeforeOrOnDate.filter(task => {
+        return task.status === '已完成'
+      })
+
+    // 计算累计完成率百分比
+    const rate = tasksCreatedBeforeOrOnDate.length > 0 
+      ? Math.round((tasksCompletedBeforeOrOnDate.length / tasksCreatedBeforeOrOnDate.length) * 100) 
+      : 0
+
+    completionRates.push(rate)
   }
 
   const option = {
     tooltip: {
-      trigger: 'axis'
+      trigger: 'axis',
+      formatter: '{b0} 完成率：{c0}%'
     },
     xAxis: {
       type: 'category',
       data: last7Days
     },
     yAxis: {
-      type: 'value'
+      type: 'value',
+      min: 0,
+      max: 100,
+      axisLabel: {
+        formatter: '{value}%'
+      }
     },
     series: [{
-      data: completedCount,
+      data: completionRates,
       type: 'line',
       smooth: true,
       itemStyle: {
@@ -245,18 +297,35 @@ function initCategoryChart() {
     value: categories[key]
   }))
 
+  // 计算每个分类的百分比
+  const total = taskStore.tasks.length || 0
+  const dataWithPercentage = data.map(item => ({
+    name: item.name,
+    value: item.value,
+    percentage: total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'
+  }))
+
   const option = {
     tooltip: {
-      trigger: 'item'
+      trigger: 'item',
+      formatter: '{b}: {c}个 ({d}%)'
     },
     legend: {
       orient: 'vertical',
-      left: 'left'
+      left: 'left',
+      formatter: function(name) {
+        const item = dataWithPercentage.find(d => d.name === name)
+        return item ? `${name} ${item.percentage}%` : name
+      }
     },
     series: [{
       type: 'pie',
-      radius: '50%',
+      radius: ['40%', '70%'],
       data: data,
+      label: {
+        formatter: '{b}\n{d}%',
+        fontSize: 12
+      },
       emphasis: {
         itemStyle: {
           shadowBlur: 10,
@@ -281,19 +350,30 @@ function initPriorityChart() {
   priorityChartInstance = echarts.init(priorityChart.value)
 
   const priorities = ['高', '中', '低']
+  const total = taskStore.tasks.length || 0
+  
   const data = priorities.map(priority => {
     const count = taskStore.tasks.filter(task => task.importance === priority).length
+    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0'
     return {
       name: priority,
-      value: count
+      value: count,
+      percentage: percentage
     }
   })
+
+  // 使用百分比作为 Y 轴的最大值
+  const maxPercentage = 100
 
   const option = {
     tooltip: {
       trigger: 'axis',
       axisPointer: {
         type: 'shadow'
+      },
+      formatter: function(params) {
+        const item = data.find(d => d.name === params[0].name)
+        return `${params[0].name}优先级<br/>任务数: ${item.value}个<br/>占比: ${item.percentage}%`
       }
     },
     xAxis: {
@@ -301,17 +381,27 @@ function initPriorityChart() {
       data: priorities
     },
     yAxis: {
-      type: 'value'
+      type: 'value',
+      max: maxPercentage,
+      min: 0,
+      axisLabel: {
+        formatter: '{value}%'
+      }
     },
     series: [
       {
-        data: data.map(item => item.value),
+        data: data.map(item => parseFloat(item.percentage)),
         type: 'bar',
         itemStyle: {
           color: (params) => {
             const colors = ['#F56C6C', '#E6A23C', '#67C23A']
             return colors[params.dataIndex]
           }
+        },
+        label: {
+          show: true,
+          position: 'top',
+          formatter: '{c}%'
         }
       }
     ]
@@ -320,24 +410,92 @@ function initPriorityChart() {
   priorityChartInstance.setOption(option)
 }
 
+// 初始化任务增长率图（近7天新增任务趋势）
+function initGrowthChart() {
+  if (!growthChart.value) return
+
+  if (growthChartInstance) {
+    growthChartInstance.dispose()
+  }
+
+  growthChartInstance = echarts.init(growthChart.value)
+
+  // 计算近7天的新增任务数据
+  const last7Days = []
+  const newTaskCount = []
+
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date()
+    date.setDate(date.getDate() - i)
+    const dateStr = date.toISOString().split('T')[0]
+    last7Days.push(dateStr.slice(5))
+
+    // 统计当天创建的任务数量
+    const count = taskStore.tasks.filter(task => {
+      const taskDate = new Date(task.createdAt).toISOString().split('T')[0]
+      return taskDate === dateStr
+    }).length
+
+    newTaskCount.push(count)
+  }
+
+  const option = {
+    tooltip: {
+      trigger: 'axis'
+    },
+    xAxis: {
+      type: 'category',
+      data: last7Days
+    },
+    yAxis: {
+      type: 'value'
+    },
+    series: [{
+      data: newTaskCount,
+      type: 'line',
+      smooth: true,
+      itemStyle: {
+        color: '#67C23A'
+      },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
+          { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
+        ])
+      }
+    }]
+  }
+
+  growthChartInstance.setOption(option)
+}
+
 // 刷新所有图表
 function refreshCharts() {
   console.log('🔄 [Statistics] refreshCharts 被调用')
   console.log('📦 [Statistics] 当前任务数量:', taskStore.tasks.length)
   console.log('📦 [Statistics] 已完成任务:', taskStore.completedTasks.length)
-  console.log('📦 [Statistics] 待办任务:', taskStore.pendingTasks.length)
+  console.log('📦 [Statistics] 待办任务:', taskStore.pendingTasks.length - taskStore.expiredTasks.length)
   console.log('📦 [Statistics] 已过期任务:', taskStore.expiredTasks.length)
 
   initTrendChart()
   initCategoryChart()
   initPriorityChart()
+  initGrowthChart()
 }
 
 function handleRefresh() {
   console.log('🔄 [Statistics] 手动刷新')
+  loading.value = true
   loadTasksFromAPI().then(() => {
-    refreshCharts()
-    ElMessage.success('数据已刷新')
+    try{
+      refreshCharts()
+      ElMessage.success('数据已刷新')
+    } catch (error) {
+        ElMessage.error('数据刷新失败')
+    } finally {
+    // ✅ 隐藏遮罩
+    loading.value = false
+   }
   })
 }
 
@@ -362,6 +520,8 @@ function handleResize() {
   trendChartInstance?.resize()
   categoryChartInstance?.resize()
   priorityChartInstance?.resize()
+  growthChartInstance?.resize()
+
 }
 
 // 组件初始化（与TaskList.vue和BotChat.vue保持一致）
@@ -401,6 +561,8 @@ onUnmounted(() => {
   trendChartInstance?.dispose()
   categoryChartInstance?.dispose()
   priorityChartInstance?.dispose()
+  growthChartInstance?.dispose()
+
 })
 </script>
 
@@ -410,6 +572,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background-color: #f5f7fa;
+  position: relative;
 
   // 统一的导航栏样式
   .header {
@@ -583,7 +746,7 @@ onUnmounted(() => {
   }
 
   .loading{
-    position: absolute;
+    position: absolute;  // ✅ 设置相对定位，作为遮罩层定位参考
     top: 0;
     left: 0;
     right: 0;
@@ -595,6 +758,7 @@ onUnmounted(() => {
     justify-content: center;
     height: 100%;  // 改为100%
     color: #909399;
+    z-index: 100; 
 
     .el-icon {
       font-size: 48px;
