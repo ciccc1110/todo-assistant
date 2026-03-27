@@ -112,6 +112,8 @@
       </div>
     </div>
 
+
+
     <!-- 任务列表 -->
     <div class="task-content">
       <div v-if="loading" class="loading">
@@ -285,10 +287,22 @@
       </template>
     </el-dialog>
 
-    <!-- 遮罩层 -->
+    <!-- 编辑遮罩层 -->
     <div v-if="editSaving" class="edit-mask">
       <el-icon class="is-loading" :size="40"><Loading /></el-icon>
       <span>正在处理...</span>
+    </div>
+
+    <!-- 删除遮罩 -->
+    <div v-if="isDeleting" class="edit-mask">
+      <el-icon class="is-loading"><Loading /></el-icon>
+      <span>正在删除任务...</span>
+    </div>
+
+    <!-- 切换状态遮罩 -->
+    <div v-if="isToggling" class="edit-mask">
+      <el-icon class="is-loading"><Loading /></el-icon>
+      <span>正在更新状态...</span>
     </div>
   </div>
 </template>
@@ -334,7 +348,6 @@ const filters = reactive({
 
 // 编辑任务表单
 const editDialogVisible = ref(false)
-const editSaving = ref(false)  // 编辑保存状态
 const editForm = reactive({
   id: null,
   task_content: '',
@@ -526,12 +539,14 @@ const handleViewStatistics = () => {
   router.push('/statistics');
 };
 
-
+// 切换状态
+const isToggling = ref(false)
 // 切换任务状态
 const handleToggleStatus = async (task) => {
   try {
     const newStatus = task.status === '已完成' ? '进行中' : (task.status ==='已过期' ? '已完成' : '已完成')
-    
+    // ✅ 显示切换状态遮罩
+    isToggling.value = true
     console.log('🔄 [TaskList] 切换任务状态:', task.id, newStatus)
     
     // ✅ 使用 task.js 的更新函数（通过 Bot）
@@ -555,6 +570,9 @@ const handleToggleStatus = async (task) => {
   } catch (error) {
     console.error('❌ [TaskList] 切换状态失败:', error)
     ElMessage.error('操作失败：' + error.message)
+  } finally {
+    // ✅ 隐藏切换状态遮罩
+    isToggling.value = false
   }
 }
 
@@ -575,12 +593,15 @@ const handleEditTask = (task) => {
 }
 
 const isSavingEdit = ref(false)
+const editSaving = ref(false)
 
 // 保存编辑
 const handleSaveEdit = async () => {
   
   // ✅ 开始保存
   isSavingEdit.value = true
+  editSaving.value = true
+
   try {
     console.log('💾 [TaskList] 保存编辑:', editForm)
     
@@ -601,17 +622,19 @@ const handleSaveEdit = async () => {
     editDialogVisible.value = false
     ElMessage.success('任务已更新')
     
-    // 重新加载任务列表
-    await loadAllTasks()
-    
   } catch (error) {
     console.error('❌ [TaskList] 保存编辑失败:', error)
     ElMessage.error('保存失败：' + error.message)
   } finally {
     // ✅ 恢复按钮状态
     isSavingEdit.value = false
+    editSaving.value = false
+    // 重新加载任务列表
+    await loadAllTasks()
   }
 }
+
+const isDeleting = ref(false)
 
 // 删除任务
 const handleDeleteTask = async (task) => {
@@ -625,7 +648,8 @@ const handleDeleteTask = async (task) => {
         type: 'warning'
       }
     )
-    
+    // ✅ 删除前显示遮罩
+    isDeleting.value = true
     console.log('🗑️ [TaskList] 删除任务:', task.id)
     
     // ✅ 使用 task.js 的删除函数（通过 Bot）
@@ -641,6 +665,9 @@ const handleDeleteTask = async (task) => {
       console.error('❌ [TaskList] 删除任务失败:', error)
       ElMessage.error('删除失败：' + error.message)
     }
+  } finally {
+    // ✅ 删除后隐藏遮罩
+    isDeleting.value = false
   }
 }
 
