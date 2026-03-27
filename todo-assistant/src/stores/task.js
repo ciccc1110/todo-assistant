@@ -34,6 +34,34 @@ export const useTaskStore = defineStore('task', () => {
     tasks.value.filter(task => task.status !== '已完成')
   )
 
+    // 计算属性：已过期任务
+  const expiredTasks = computed(() => 
+    tasks.value.filter(task => {
+      if (!task.deadline || task.status === '已完成') return false
+      const now = new Date()
+      const deadline = new Date(task.deadline)
+      return now > deadline
+    })
+  )
+
+    // 计算属性：准时完成率（截止时间前主动完成的任务 / 总完成任务数 × 100%）
+  const onTimeCompletionRate = computed(() => {
+    const completed = completedTasks.value
+    if (completed.length === 0) return 0
+
+    // 准时完成：在截止时间前主动标记完成的任务（updated_at < deadline）
+    const onTimeCompleted = completed.filter(task => {
+      if (!task.deadline || !task.updatedAt) return false
+      const updatedAt = new Date(task.updatedAt)
+      const deadline = new Date(task.deadline)
+      return updatedAt <= deadline
+    })
+
+    const rate = (onTimeCompleted.length / completed.length) * 100
+    return Math.round(rate * 10) / 10 // 保留一位小数
+  })
+
+
   // 保存任务到本地存储
   const saveTasks = () => {
     localStorage.setItem('tasks', JSON.stringify(tasks.value))
@@ -87,7 +115,7 @@ export const useTaskStore = defineStore('task', () => {
   const toggleTaskStatus = (taskId) => {
     const task = tasks.value.find(t => t.id === taskId)
     if (task) {
-      task.status = task.status === '已完成' ? '进行中' : '已完成'
+      task.status = task.status === '已完成' ? '进行中' : (task.status ==='已过期' ? '已完成' : '已完成')
       task.updatedAt = new Date().toISOString()
       saveTasks()
       return task
@@ -111,6 +139,8 @@ export const useTaskStore = defineStore('task', () => {
     allTasks,
     completedTasks,
     pendingTasks,
+    expiredTasks,
+    onTimeCompletionRate,
     addTask,
     updateTask,
     deleteTask,

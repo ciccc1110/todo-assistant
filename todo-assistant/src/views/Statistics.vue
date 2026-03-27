@@ -1,6 +1,6 @@
 <template>
   <div class="statistics">
-    <!-- 顶部导航栏 - 与TaskList/BotChat保持完全一致 -->
+    <!-- 顶部导航栏  -->
     <div class="header">
       <div class="header-left">
         <div class="logo">
@@ -40,6 +40,27 @@
         <StatCard title="总任务数" :value="taskStore.allTasks.length" />
         <StatCard title="已完成" :value="taskStore.completedTasks.length" />
         <StatCard title="待办数" :value="taskStore.pendingTasks.length" />
+        <StatCard title="已过期" :value="taskStore.expiredTasks.length" />
+      </div>
+      
+      <!-- 完成率统计卡片（并列显示） -->
+      <div class="overview-cards">
+        <div class="rate-card blue-card">
+          <div class="rate-icon">📊</div>
+          <div class="rate-content">
+            <div class="rate-title">完成率</div>
+            <div class="rate-value">{{ completionRate }}%</div>
+            <div class="rate-desc">已完成任务占总任务数的比例</div>
+          </div>
+        </div>
+        <div class="rate-card purple-card">
+          <div class="rate-icon">⏱️</div>
+          <div class="rate-content">
+            <div class="rate-title">准时完成率</div>
+            <div class="rate-value">{{ taskStore.onTimeCompletionRate ?? 0 }}%</div>
+            <div class="rate-desc">截止时间前主动完成的任务占比</div>
+          </div>
+        </div>
       </div>
 
       <!-- 完成率趋势图 -->
@@ -64,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useTaskStore } from '@/stores/task'
 import { useUserStore } from '@/stores/user'
 import * as echarts from 'echarts'
@@ -87,6 +108,15 @@ const loading = ref(false)
 let trendChartInstance = null
 let categoryChartInstance = null
 let priorityChartInstance = null
+
+
+// 计算完成率：已完成 / 总任务数 × 100%
+const completionRate = computed(() => {
+  const total = taskStore.allTasks?.length || 0
+  const completed = taskStore.completedTasks?.length || 0
+  if (total === 0) return 0
+  return Math.round((completed / total) * 100)
+})
 
 console.log('📊 [Statistics] 组件初始化')
 
@@ -296,6 +326,7 @@ function refreshCharts() {
   console.log('📦 [Statistics] 当前任务数量:', taskStore.tasks.length)
   console.log('📦 [Statistics] 已完成任务:', taskStore.completedTasks.length)
   console.log('📦 [Statistics] 待办任务:', taskStore.pendingTasks.length)
+  console.log('📦 [Statistics] 已过期任务:', taskStore.expiredTasks.length)
 
   initTrendChart()
   initCategoryChart()
@@ -460,6 +491,75 @@ onUnmounted(() => {
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
       gap: 24px;
       margin-bottom: 32px;
+
+       // 准时完成率卡片
+      .rate-card {
+        border-radius: 8px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s;
+
+        &:hover {
+          transform: translateY(-2px);
+        }
+
+        // 蓝色卡片 - 完成率
+        &.blue-card {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+
+          &:hover {
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+          }
+        }
+
+        // 紫色卡片 - 准时完成率
+        &.purple-card {
+          background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+          box-shadow: 0 2px 8px rgba(240, 147, 251, 0.2);
+
+          &:hover {
+            box-shadow: 0 4px 12px rgba(240, 147, 251, 0.3);
+          }
+        }
+
+        .rate-icon {
+          width: 56px;
+          height: 56px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          flex-shrink: 0;
+        }
+
+        .rate-content {
+          flex: 1;
+
+          .rate-title {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 4px;
+          }
+
+          .rate-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 4px;
+          }
+
+          .rate-desc {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+          }
+        }
+      }
     }
 
     .chart-container {
