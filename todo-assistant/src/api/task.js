@@ -71,7 +71,9 @@ export async function getTaskList(filters = {}, userId = 'user_default') {
         "importance": "优先级",
         "status": "状态",
         "created_at": "创建时间(YYYY-MM-DD HH:mm:ss)",
-        "description": "描述"
+        "description": "描述",
+        "updated_at": "更新时间(YYYY-MM-DD HH:mm:ss)",
+        "completed_at": "完成时间(YYYY-MM-DD HH:mm:ss)" 
       }
     ]
   }
@@ -163,7 +165,8 @@ function formatTaskData(task) {
     status: task.status || '进行中',
     created_at: formatDateTime(task.created_at),
     updated_at: formatDateTime(task.updated_at),
-    description: task.description || ''
+    description: task.description || '',
+    completed_at: formatDateTime(task.completed_at)
   };
 }
 /**

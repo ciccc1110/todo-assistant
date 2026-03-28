@@ -26,21 +26,36 @@
       </div>
     </div>
 
-
+    <div v-if="loading" class="loading-overlay">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>加载中...</span>
+    </div>
 
     <!-- 主内容区 -->
     <div class="main-content">
 
-      <div v-if="loading" class="loading">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <span>加载中...</span>
+      <!-- 时间维度筛选和生成报告 -->
+      <div class="filter-actions">
+        <div class="filter-group">
+          <span class="filter-label">时间维度：</span>
+          <el-radio-group v-model="timeDimension" @change="handleTimeDimensionChange">
+            <el-radio-button label="all">全部</el-radio-button>
+            <el-radio-button label="week">按周</el-radio-button>
+            <el-radio-button label="month">按月</el-radio-button>
+          </el-radio-group>
+        </div>
+        <el-button type="primary" @click="handleGenerateReport">
+          <el-icon><Document /></el-icon>
+          生成报告
+        </el-button>
       </div>
+
       <!-- 总览卡片 -->
       <div class="overview-cards">
-        <StatCard title="总任务数" :value="taskStore.allTasks.length" />
-        <StatCard title="已完成" :value="taskStore.completedTasks.length" />
-        <StatCard title="待办数" :value="taskStore.pendingTasks.length - taskStore.expiredTasks.length" />
-        <StatCard title="已过期" :value="taskStore.expiredTasks.length" />
+        <StatCard title="总任务数" :value="filteredStats.total" />
+        <StatCard title="已完成" :value="filteredStats.completed" />
+        <StatCard title="待办数" :value="filteredStats.pending" />
+        <StatCard title="已过期" :value="filteredStats.expired" />
       </div>
       
       <!-- 完成率统计卡片（并列显示） -->
@@ -57,7 +72,7 @@
           <div class="rate-icon">⏱️</div>
           <div class="rate-content">
             <div class="rate-title">准时完成率</div>
-            <div class="rate-value">{{ taskStore.onTimeCompletionRate ?? 0 }}%</div>
+            <div class="rate-value">{{ onTimeCompletionRate }}%</div>
             <div class="rate-desc">截止时间前主动完成的任务占比</div>
           </div>
         </div>
@@ -71,9 +86,10 @@
         </div>
       </div>
 
+
       <!-- 完成率/任务增长率趋势图 -->
       <div class="chart-container">
-        <h3>完成率趋势与任务增长数（近7天）</h3>
+        <h3>完成率趋势与任务增长率（{{ timeDimension === 'all' ? '全部' : (timeDimension === 'week' ? '近7天' : '近30天') }}）</h3>
         <div ref="trendChart" class="chart"></div>
       </div>
 
@@ -99,7 +115,7 @@ import { useUserStore } from '@/stores/user'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { Refresh, List, ChatDotRound } from '@element-plus/icons-vue'
+import { Refresh, List, ChatDotRound , Document} from '@element-plus/icons-vue'
 import StatCard from '@/components/StatCard.vue'
 import { getTaskList } from '@/api/task'
 import { Loading } from '@element-plus/icons-vue'
@@ -113,30 +129,82 @@ const categoryChart = ref(null)
 const priorityChart = ref(null)
 const loading = ref(false)
 
+// 时间维度筛选：week-按周, month-按月
+const timeDimension = ref('week')
+
 let trendChartInstance = null
 let categoryChartInstance = null
 let priorityChartInstance = null
 
+// 根据时间维度过滤任务
+const filteredTasks = computed(() => {
+  const now = new Date()
+  let startDate
+
+  if (timeDimension.value === 'all') {
+    // 全部：返回所有任务，不进行时间过滤
+    return taskStore.tasks
+  } else if (timeDimension.value === 'week') {
+    // 近7天
+    startDate = new Date(now)
+    startDate.setDate(now.getDate() - 6)
+    startDate.setHours(0, 0, 0, 0)
+  } else if (timeDimension.value === 'month') {
+    // 近30天
+    startDate = new Date(now)
+    startDate.setDate(now.getDate() - 29)
+    startDate.setHours(0, 0, 0, 0)
+  }
+
+  return taskStore.tasks.filter(task => {
+    const taskDate = new Date(task.createdAt)
+    return taskDate >= startDate && taskDate <= now
+  })
+})
+
+// 计算过滤后的任务统计
+const filteredStats = computed(() => {
+  const tasks = filteredTasks.value
+  const completed = tasks.filter(t => t.status === '已完成').length
+  const expired = tasks.filter(t => t.status === '已过期').length
+  const total = tasks.length
+  return {
+    total: total,
+    completed: completed,
+    expired: expired,
+    pending: total - completed - expired  // 待办数 = 总任务 - 已完成 - 已过期
+  }
+})
 
 // 计算完成率：已完成 / 总任务数 × 100%
 const completionRate = computed(() => {
-  const total = taskStore.allTasks?.length || 0
-  const completed = taskStore.completedTasks?.length || 0
+  const total = filteredStats.value.total
+  const completed = filteredStats.value.completed
   if (total === 0) return 0
   return Math.round((completed / total) * 100)
 })
 
+// 计算准时完成率
+const onTimeCompletionRate = computed(() => {
+  const tasks = filteredTasks.value
+  const completedOnTime = tasks.filter(task => {
+    if (task.status !== '已完成' || !task.deadline || !task.completedAt) return false
+    const completedAt = new Date(task.completedAt)
+    const deadline = new Date(task.deadline)
+    return completedAt <= deadline  // ✅ 完成时间 <= 截止时间 = 准时完成
+  }).length
+
+  const totalCompleted = filteredStats.value.completed
+  if (totalCompleted === 0) return 0
+  return Math.round((completedOnTime / totalCompleted) * 100)
+})
 
 // 计算逾期率
 const overdueRate = computed(() => {
-  const total = taskStore.allTasks.length
-  const expired = taskStore.allTasks.filter(task => {
-    if (!task.deadline || task.status === '已完成') return false
-    const now = new Date()
-    const deadline = new Date(task.deadline)
-    return now > deadline
-  }).length
-  return total > 0 ? Math.round((expired / total) * 100) : 0
+  const total = filteredStats.value.total
+  const expired = filteredStats.value.expired
+  if (total === 0) return 0
+  return Math.round((expired / total) * 100)
 })
 
 
@@ -165,7 +233,8 @@ async function loadTasksFromAPI() {
       deadline: task.deadline || null,
       status: task.status || '进行中',
       createdAt: task.created_at || new Date().toISOString(),
-      updatedAt: task.updated_at || task.created_at || new Date().toISOString()
+      updatedAt: task.updated_at || task.created_at || new Date().toISOString(),
+      completedAt: task.completed_at || null
     }))
     
     console.log('✨ [Statistics] 格式化后任务数量:', formattedTasks.length)
@@ -188,7 +257,7 @@ async function loadTasksFromAPI() {
   }
 }
 
-// 初始化完成率趋势图
+// 初始化完成率趋势与任务增长率混合图
 function initTrendChart() {
   if (!trendChart.value) return
 
@@ -198,12 +267,33 @@ function initTrendChart() {
 
   trendChartInstance = echarts.init(trendChart.value)
 
-  // 计算近7天的完成率数据
-  const last7Days = []
+  // 根据时间维度确定天数范围
+  let days
+  if (timeDimension.value === 'all') {
+    // 全部：计算所有任务的最早和最晚日期，显示完整的时间跨度
+    const tasks = taskStore.tasks
+    if (tasks.length === 0) {
+      days = 7 // 默认显示7天
+    } else {
+      const dates = tasks.map(task => new Date(task.createdAt).getTime())
+      const minDate = new Date(Math.min(...dates))
+      const maxDate = new Date(Math.max(...dates))
+      const diffTime = Math.abs(maxDate - minDate)
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      days = Math.max(diffDays, 1) // 至少显示1天
+    }
+  } else if (timeDimension.value === 'week') {
+    days = 7
+  } else if (timeDimension.value === 'month') {
+    days = 30
+  }
+
+  // 计算时间范围内的数据
+  const dates = []
   const completionRates = []
   const newTaskCounts = []
 
-  for (let i = 6; i >= 0; i--) {
+  for (let i = days - 1; i >= 0; i--) {
     const date = new Date()
     date.setDate(date.getDate() - i)
     // 使用本地时间格式化日期，避免时区问题
@@ -211,16 +301,13 @@ function initTrendChart() {
     const month = String(date.getMonth() + 1).padStart(2, '0')
     const day = String(date.getDate()).padStart(2, '0')
     const dateStr = `${year}-${month}-${day}`  // ✅ 本地时间
-    
+
     // 显示格式：MM-DD
     const displayDate = `${month}-${day}`
-    last7Days.push(displayDate)
+    dates.push(displayDate)
 
-    // 计算截止到当天的累计完成率
-    // 分子：截止到当天（含当天）已完成的任务总数
-    // 分母：截止到当天（含当天）创建的任务总数
-    
-    const tasksCreatedBeforeOrOnDate = taskStore.tasks.filter(task => {
+    // 计算截止到当天的累计完成率（使用过滤后的任务）
+    const tasksCreatedBeforeOrOnDate = filteredTasks.value.filter(task => {
       const taskDate = new Date(task.createdAt)
       const taskYear = taskDate.getFullYear()
       const taskMonth = String(taskDate.getMonth() + 1).padStart(2, '0')
@@ -229,18 +316,18 @@ function initTrendChart() {
       return taskDateStr <= dateStr
     })
 
-      const tasksCompletedBeforeOrOnDate = tasksCreatedBeforeOrOnDate.filter(task => {
-        return task.status === '已完成'
-      })
+    const tasksCompletedBeforeOrOnDate = tasksCreatedBeforeOrOnDate.filter(task => {
+      return task.status === '已完成'
+    })
 
     // 计算累计完成率百分比
-    const rate = tasksCreatedBeforeOrOnDate.length > 0 
-      ? Math.round((tasksCompletedBeforeOrOnDate.length / tasksCreatedBeforeOrOnDate.length) * 100) 
+    const rate = tasksCreatedBeforeOrOnDate.length > 0
+      ? Math.round((tasksCompletedBeforeOrOnDate.length / tasksCreatedBeforeOrOnDate.length) * 100)
       : 0
     completionRates.push(rate)
 
-    // 统计当天创建的任务数量（任务增长率）
-    const count = taskStore.tasks.filter(task => {
+    // 统计当天创建的任务数量（任务增长率，使用过滤后的任务）
+    const count = filteredTasks.value.filter(task => {
       const taskDate = new Date(task.createdAt)
       const taskYear = taskDate.getFullYear()
       const taskMonth = String(taskDate.getMonth() + 1).padStart(2, '0')
@@ -249,7 +336,6 @@ function initTrendChart() {
       return taskDateStr === dateStr
     }).length
     newTaskCounts.push(count)
-
   }
 
   const option = {
@@ -271,12 +357,12 @@ function initTrendChart() {
       }
     },
     legend: {
-      data: ['完成率', '任务增长数'],
+      data: ['完成率', '任务增长率'],
       top: 0
     },
     xAxis: {
       type: 'category',
-      data: last7Days
+      data: dates
     },
     yAxis: [
       {
@@ -329,7 +415,7 @@ function initTrendChart() {
         }
       },
       {
-        name: '任务增长数',
+        name: '任务增长率',
         type: 'bar',
         yAxisIndex: 1,
         data: newTaskCounts,
@@ -342,6 +428,7 @@ function initTrendChart() {
 
   trendChartInstance.setOption(option)
 }
+
 // 初始化任务分类统计图
 function initCategoryChart() {
   if (!categoryChart.value) return
@@ -352,8 +439,9 @@ function initCategoryChart() {
 
   categoryChartInstance = echarts.init(categoryChart.value)
 
+  // 使用过滤后的任务数据统计分类
   const categories = {}
-  taskStore.tasks.forEach(task => {
+  filteredTasks.value.forEach(task => {
     const category = task.category || '其他'
     categories[category] = (categories[category] || 0) + 1
   })
@@ -415,11 +503,12 @@ function initPriorityChart() {
 
   priorityChartInstance = echarts.init(priorityChart.value)
 
+  // 使用过滤后的任务数据统计优先级
   const priorities = ['高', '中', '低']
-  const total = taskStore.tasks.length || 0
-  
+  const total = filteredTasks.value.length || 0
+
   const data = priorities.map(priority => {
-    const count = taskStore.tasks.filter(task => task.importance === priority).length
+    const count = filteredTasks.value.filter(task => task.importance === priority).length
     const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0'
     return {
       name: priority,
@@ -475,6 +564,19 @@ function initPriorityChart() {
 
   priorityChartInstance.setOption(option)
 }
+
+// 时间维度切换处理
+function handleTimeDimensionChange(value) {
+  console.log('📊 [Statistics] 时间维度切换为:', value)
+  refreshCharts()
+}
+
+// 生成报告处理（空函数）
+function handleGenerateReport() {
+  console.log('📄 [Statistics] 点击生成报告按钮')
+  ElMessage.info('生成报告功能开发中...')
+}
+
 
 
 // 刷新所有图表
@@ -760,29 +862,49 @@ onUnmounted(() => {
     }
   }
 
-  .loading{
-    position: absolute;  // ✅ 设置相对定位，作为遮罩层定位参考
-    top: 0;
+  .loading-overlay {
+    position: absolute;
+    top: 60px;
     left: 0;
     right: 0;
     bottom: 0;
-    background: #f5f7fa;
+    background: rgba(245, 247, 250, 1);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100%;  // 改为100%
+    z-index: 9999;     // ← 足够高，覆盖图表
     color: #909399;
-    z-index: 100; 
 
     .el-icon {
       font-size: 48px;
       margin-bottom: 16px;
+      animation: rotating 1.5s linear infinite;
     }
 
-    p {
+    span {
       font-size: 16px;
-      margin-bottom: 24px;
+    }
+  }
+  .filter-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .filter-label {
+        font-size: 14px;
+        color: #606266;
+        font-weight: 500;
+      }
     }
   }
 }
