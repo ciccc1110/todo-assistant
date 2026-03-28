@@ -61,6 +61,14 @@
             <div class="rate-desc">截止时间前主动完成的任务占比</div>
           </div>
         </div>
+                <div class="rate-card red-card">
+          <div class="rate-icon">⚠️</div>
+          <div class="rate-content">
+            <div class="rate-title">逾期率</div>
+            <div class="rate-value">{{ overdueRate }}%</div>
+            <div class="rate-desc">逾期任务占总任务数的比例</div>
+          </div>
+        </div>
       </div>
 
       <!-- 完成率趋势图 -->
@@ -129,7 +137,7 @@ const completionRate = computed(() => {
 // 计算逾期率
 const overdueRate = computed(() => {
   const total = taskStore.allTasks.length
-  const expired = taskStore.tasks.filter(task => {
+  const expired = taskStore.allTasks.filter(task => {
     if (!task.deadline || task.status === '已完成') return false
     const now = new Date()
     const deadline = new Date(task.deadline)
@@ -427,13 +435,24 @@ function initGrowthChart() {
   for (let i = 6; i >= 0; i--) {
     const date = new Date()
     date.setDate(date.getDate() - i)
-    const dateStr = date.toISOString().split('T')[0]
-    last7Days.push(dateStr.slice(5))
+    // 使用本地时间格式化日期，避免时区问题
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const dateStr = `${year}-${month}-${day}`  // ✅ 本地时间
+    
+    // 显示格式：MM-DD
+    const displayDate = `${month}-${day}`
+    last7Days.push(displayDate)
 
     // 统计当天创建的任务数量
     const count = taskStore.tasks.filter(task => {
-      const taskDate = new Date(task.createdAt).toISOString().split('T')[0]
-      return taskDate === dateStr
+      const taskDate = new Date(task.createdAt)
+      const taskYear = taskDate.getFullYear()
+      const taskMonth = String(taskDate.getMonth() + 1).padStart(2, '0')
+      const taskDay = String(taskDate.getDate()).padStart(2, '0')
+      const taskDateStr = `${taskYear}-${taskMonth}-${taskDay}`  // ✅ 本地时间
+      return taskDateStr === dateStr
     }).length
 
     newTaskCount.push(count)
@@ -686,6 +705,16 @@ onUnmounted(() => {
 
           &:hover {
             box-shadow: 0 4px 12px rgba(240, 147, 251, 0.3);
+          }
+        }
+        
+        // 红色卡片 - 逾期率
+        &.red-card {
+          background: linear-gradient(135deg, #cb452e 0%, #e7ba27 100%);
+          box-shadow: 0 2px 8px rgba(248, 80, 50, 0.2);
+
+          &:hover {
+            box-shadow: 0 4px 12px rgba(248, 80, 50, 0.3);
           }
         }
 
