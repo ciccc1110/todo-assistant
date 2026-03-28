@@ -328,79 +328,74 @@ function initTrendChart() {
 
   trendChartInstance = echarts.init(trendChart.value)
 
-  // 根据时间维度确定天数范围
-    let days
-    if (timeDimension.value === 'week') {
-      // 本周：7天
-      days = 7
-    } else if (timeDimension.value === 'month') {
-      // 当月：计算当月天数
-      const now = new Date()
-      days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-    } else if (timeDimension.value === 'custom') {
-      // 自定义：计算日期范围天数
-      if (customDateRange.value && customDateRange.value.length === 2) {
-        const start = new Date(customDateRange.value[0])
-        const end = new Date(customDateRange.value[1])
-        const diffTime = Math.abs(end - start)
-        days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
-      } else {
-        days = 7
-      }
-    } else {
-      // 默认7天
-      days = 7
-    }
-
-  // 计算时间范围内的数据
+   const now = new Date()
   const dates = []
   const completionRates = []
   const newTaskCounts = []
 
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date()
-    date.setDate(date.getDate() - i)
-    // 使用本地时间格式化日期，避免时区问题
+  // ✅ 根据时间维度，生成起止日期列表
+  let dateList = []
+
+  if (timeDimension.value === 'week') {
+    // 本周：从周一到周日
+    const day = now.getDay() || 7
+    for (let i = -(day - 1); i <= (7 - day); i++) {
+      const d = new Date(now)
+      d.setDate(now.getDate() + i)
+      dateList.push(d)
+    }
+  } else if (timeDimension.value === 'month') {
+    // ✅ 当月：从1号到今天（不是往前推N天！）
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    const today = now.getDate()
+    for (let d = 1; d <= today; d++) {
+      dateList.push(new Date(year, month, d))
+    }
+  } else if (timeDimension.value === 'custom') {
+    // 自定义：从 startDate 到 endDate
+    if (customDateRange.value && customDateRange.value.length === 2) {
+      const start = new Date(customDateRange.value[0])
+      const end = new Date(customDateRange.value[1])
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        dateList.push(new Date(d))
+      }
+    }
+  }
+
+  // 遍历日期列表，计算每天的数据
+  dateList.forEach(date => {
     const year = date.getFullYear()
     const month = String(date.getMonth() + 1).padStart(2, '0')
     const day = String(date.getDate()).padStart(2, '0')
-    const dateStr = `${year}-${month}-${day}`  // ✅ 本地时间
-
-    // 显示格式：MM-DD
+    const dateStr = `${year}-${month}-${day}`
     const displayDate = `${month}-${day}`
     dates.push(displayDate)
 
-    // 计算截止到当天的累计完成率（使用过滤后的任务）
-    const tasksCreatedBeforeOrOnDate = filteredTasks.value.filter(task => {
+    // 累计完成率（截止当天）
+    const tasksUpToDate = filteredTasks.value.filter(task => {
       const taskDate = new Date(task.createdAt)
-      const taskYear = taskDate.getFullYear()
-      const taskMonth = String(taskDate.getMonth() + 1).padStart(2, '0')
-      const taskDay = String(taskDate.getDate()).padStart(2, '0')
-      const taskDateStr = `${taskYear}-${taskMonth}-${taskDay}`
-      return taskDateStr <= dateStr
+      const ty = taskDate.getFullYear()
+      const tm = String(taskDate.getMonth() + 1).padStart(2, '0')
+      const td = String(taskDate.getDate()).padStart(2, '0')
+      return `${ty}-${tm}-${td}` <= dateStr
     })
-
-    const tasksCompletedBeforeOrOnDate = tasksCreatedBeforeOrOnDate.filter(task => {
-      return task.status === '已完成'
-    })
-
-    // 计算累计完成率百分比
-    const rate = tasksCreatedBeforeOrOnDate.length > 0
-      ? Math.round((tasksCompletedBeforeOrOnDate.length / tasksCreatedBeforeOrOnDate.length) * 100)
+    const completedUpToDate = tasksUpToDate.filter(t => t.status === '已完成')
+    const rate = tasksUpToDate.length > 0
+      ? Math.round((completedUpToDate.length / tasksUpToDate.length) * 100)
       : 0
     completionRates.push(rate)
 
-    // 统计当天创建的任务数量（任务增长率，使用过滤后的任务）
+    // 当天新增任务数
     const count = filteredTasks.value.filter(task => {
       const taskDate = new Date(task.createdAt)
-      const taskYear = taskDate.getFullYear()
-      const taskMonth = String(taskDate.getMonth() + 1).padStart(2, '0')
-      const taskDay = String(taskDate.getDate()).padStart(2, '0')
-      const taskDateStr = `${taskYear}-${taskMonth}-${taskDay}`
-      return taskDateStr === dateStr
+      const ty = taskDate.getFullYear()
+      const tm = String(taskDate.getMonth() + 1).padStart(2, '0')
+      const td = String(taskDate.getDate()).padStart(2, '0')
+      return `${ty}-${tm}-${td}` === dateStr
     }).length
     newTaskCounts.push(count)
-  }
+  })
 
   const option = {
     tooltip: {
