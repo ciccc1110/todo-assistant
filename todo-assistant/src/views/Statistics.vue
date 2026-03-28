@@ -58,6 +58,17 @@
               :clearable="false"
               style="width: 360px; margin-left: 12px"
             />
+
+            <el-button
+              :type="hasCustomDateRange ? 'primary' : 'info'"
+              :plain="!hasCustomDateRange"
+              :disabled="!hasCustomDateRange"
+              @click="handleResetCustomDate"
+              style="margin-left: 12px"
+            >
+              <el-icon><RefreshLeft /></el-icon>
+              重置筛选
+            </el-button>
           </div>
         </div>
         <el-button type="primary" @click="handleGenerateReport">
@@ -131,7 +142,7 @@ import { useUserStore } from '@/stores/user'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { Refresh, List, ChatDotRound , Document} from '@element-plus/icons-vue'
+import { Refresh, List, ChatDotRound, Document, RefreshLeft } from '@element-plus/icons-vue'
 import StatCard from '@/components/StatCard.vue'
 import { getTaskList } from '@/api/task'
 import { Loading } from '@element-plus/icons-vue'
@@ -197,6 +208,20 @@ const filteredTasks = computed(() => {
     return taskDate >= startDate && taskDate <= endDate
   })
 })
+
+const hasCustomDateRange = computed(() => {
+  return Array.isArray(customDateRange.value) && customDateRange.value.length === 2
+    && !!customDateRange.value[0] && !!customDateRange.value[1]
+})
+
+
+function handleResetCustomDate() {
+  customDateRange.value = []
+  refreshCharts()
+  ElMessage.success('筛选条件已重置')
+}
+
+
 
 // 计算过滤后的任务统计
 const filteredStats = computed(() => {
@@ -950,6 +975,10 @@ onUnmounted(() => {
         color: #606266;
         font-weight: 500;
       }
+    }
+    .custom-date-picker {
+      display: flex;
+      align-items: center;
     }
   }
 }
