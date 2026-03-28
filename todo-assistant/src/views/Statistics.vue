@@ -71,17 +71,12 @@
         </div>
       </div>
 
-      <!-- 完成率趋势图 -->
+      <!-- 完成率/任务增长率趋势图 -->
       <div class="chart-container">
-        <h3>完成率趋势（近7天）</h3>
+        <h3>完成率趋势与任务增长数（近7天）</h3>
         <div ref="trendChart" class="chart"></div>
       </div>
 
-      <!-- 任务增长率（近7天） -->
-      <div class="chart-container">
-        <h3>任务增长率（近7天）</h3>
-        <div ref="growthChart" class="chart"></div>
-      </div>
       <!-- 任务分类统计 -->
       <div class="chart-container">
         <h3>任务分类统计</h3>
@@ -116,13 +111,11 @@ const userStore = useUserStore()
 const trendChart = ref(null)
 const categoryChart = ref(null)
 const priorityChart = ref(null)
-const growthChart = ref(null)
 const loading = ref(false)
 
 let trendChartInstance = null
 let categoryChartInstance = null
 let priorityChartInstance = null
-let growthChartInstance = null
 
 
 // 计算完成率：已完成 / 总任务数 × 100%
@@ -208,6 +201,7 @@ function initTrendChart() {
   // 计算近7天的完成率数据
   const last7Days = []
   const completionRates = []
+  const newTaskCounts = []
 
   for (let i = 6; i >= 0; i--) {
     const date = new Date()
@@ -235,7 +229,6 @@ function initTrendChart() {
       return taskDateStr <= dateStr
     })
 
-      // 修正后：直接使用 status 判断 ✅
       const tasksCompletedBeforeOrOnDate = tasksCreatedBeforeOrOnDate.filter(task => {
         return task.status === '已完成'
       })
@@ -244,46 +237,111 @@ function initTrendChart() {
     const rate = tasksCreatedBeforeOrOnDate.length > 0 
       ? Math.round((tasksCompletedBeforeOrOnDate.length / tasksCreatedBeforeOrOnDate.length) * 100) 
       : 0
-
     completionRates.push(rate)
+
+    // 统计当天创建的任务数量（任务增长率）
+    const count = taskStore.tasks.filter(task => {
+      const taskDate = new Date(task.createdAt)
+      const taskYear = taskDate.getFullYear()
+      const taskMonth = String(taskDate.getMonth() + 1).padStart(2, '0')
+      const taskDay = String(taskDate.getDate()).padStart(2, '0')
+      const taskDateStr = `${taskYear}-${taskMonth}-${taskDay}`
+      return taskDateStr === dateStr
+    }).length
+    newTaskCounts.push(count)
+
   }
 
   const option = {
     tooltip: {
       trigger: 'axis',
-      formatter: '{b0} 完成率：{c0}%'
+      formatter: function(params) {
+        let result = `<div style="padding: 8px;"><strong>${params[0].axisValue}</strong></div>`
+        params.forEach(param => {
+          const marker = param.marker
+          const seriesName = param.seriesName
+          const value = param.value
+          if (seriesName === '完成率') {
+            result += `<div style="margin-top: 6px;">${marker} ${seriesName}: ${value}%</div>`
+          } else {
+            result += `<div style="margin-top: 6px;">${marker} ${seriesName}: ${value}个</div>`
+          }
+        })
+        return result
+      }
+    },
+    legend: {
+      data: ['完成率', '任务增长数'],
+      top: 0
     },
     xAxis: {
       type: 'category',
       data: last7Days
     },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: 100,
-      axisLabel: {
-        formatter: '{value}%'
-      }
-    },
-    series: [{
-      data: completionRates,
-      type: 'line',
-      smooth: true,
-      itemStyle: {
-        color: '#409EFF'
+    yAxis: [
+      {
+        type: 'value',
+        name: '完成率 (%)',
+        min: 0,
+        max: 100,
+        position: 'left',
+        axisLabel: {
+          formatter: '{value}%'
+        },
+        axisLine: {
+          show: true,
+          lineStyle: {
+            color: '#409EFF'
+          }
+        }
       },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
-          { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-        ])
+      {
+        type: 'value',
+        name: '任务数 (个)',
+        min: 0,
+        position: 'right',
+        axisLabel: {
+          formatter: '{value}'
+        },
+        axisLine: {
+          show: true,
+          lineStyle: {
+            color: '#67C23A'
+          }
+        }
       }
-    }]
+    ],
+    series: [
+      {
+        name: '完成率',
+        type: 'line',
+        yAxisIndex: 0,
+        data: completionRates,
+        smooth: true,
+        itemStyle: {
+          color: '#409EFF'
+        },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
+            { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
+          ])
+        }
+      },
+      {
+        name: '任务增长数',
+        type: 'bar',
+        yAxisIndex: 1,
+        data: newTaskCounts,
+        itemStyle: {
+          color: '#67C23A'
+        }
+      }
+    ]
   }
 
   trendChartInstance.setOption(option)
 }
-
 // 初始化任务分类统计图
 function initCategoryChart() {
   if (!categoryChart.value) return
@@ -418,75 +476,6 @@ function initPriorityChart() {
   priorityChartInstance.setOption(option)
 }
 
-// 初始化任务增长率图（近7天新增任务趋势）
-function initGrowthChart() {
-  if (!growthChart.value) return
-
-  if (growthChartInstance) {
-    growthChartInstance.dispose()
-  }
-
-  growthChartInstance = echarts.init(growthChart.value)
-
-  // 计算近7天的新增任务数据
-  const last7Days = []
-  const newTaskCount = []
-
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date()
-    date.setDate(date.getDate() - i)
-    // 使用本地时间格式化日期，避免时区问题
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const dateStr = `${year}-${month}-${day}`  // ✅ 本地时间
-    
-    // 显示格式：MM-DD
-    const displayDate = `${month}-${day}`
-    last7Days.push(displayDate)
-
-    // 统计当天创建的任务数量
-    const count = taskStore.tasks.filter(task => {
-      const taskDate = new Date(task.createdAt)
-      const taskYear = taskDate.getFullYear()
-      const taskMonth = String(taskDate.getMonth() + 1).padStart(2, '0')
-      const taskDay = String(taskDate.getDate()).padStart(2, '0')
-      const taskDateStr = `${taskYear}-${taskMonth}-${taskDay}`  // ✅ 本地时间
-      return taskDateStr === dateStr
-    }).length
-
-    newTaskCount.push(count)
-  }
-
-  const option = {
-    tooltip: {
-      trigger: 'axis'
-    },
-    xAxis: {
-      type: 'category',
-      data: last7Days
-    },
-    yAxis: {
-      type: 'value'
-    },
-    series: [{
-      data: newTaskCount,
-      type: 'line',
-      smooth: true,
-      itemStyle: {
-        color: '#67C23A'
-      },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
-          { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
-        ])
-      }
-    }]
-  }
-
-  growthChartInstance.setOption(option)
-}
 
 // 刷新所有图表
 function refreshCharts() {
@@ -499,12 +488,13 @@ function refreshCharts() {
   initTrendChart()
   initCategoryChart()
   initPriorityChart()
-  initGrowthChart()
 }
 
 function handleRefresh() {
-  console.log('🔄 [Statistics] 手动刷新')
   loading.value = true
+
+  console.log('🔄 [Statistics] 手动刷新')
+  
   loadTasksFromAPI().then(() => {
     try{
       refreshCharts()
@@ -539,8 +529,6 @@ function handleResize() {
   trendChartInstance?.resize()
   categoryChartInstance?.resize()
   priorityChartInstance?.resize()
-  growthChartInstance?.resize()
-
 }
 
 // 组件初始化（与TaskList.vue和BotChat.vue保持一致）
@@ -580,8 +568,6 @@ onUnmounted(() => {
   trendChartInstance?.dispose()
   categoryChartInstance?.dispose()
   priorityChartInstance?.dispose()
-  growthChartInstance?.dispose()
-
 })
 </script>
 
