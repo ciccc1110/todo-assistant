@@ -38,11 +38,27 @@
       <div class="filter-actions">
         <div class="filter-group">
           <span class="filter-label">时间维度：</span>
-          <el-radio-group v-model="timeDimension" @change="handleTimeDimensionChange">
-            <el-radio-button label="all">全部</el-radio-button>
-            <el-radio-button label="week">按周</el-radio-button>
-            <el-radio-button label="month">按月</el-radio-button>
-          </el-radio-group>
+            <el-radio-group v-model="timeDimension" @change="handleTimeDimensionChange">
+              <el-radio-button label="week">本周</el-radio-button>
+              <el-radio-button label="month">当月</el-radio-button>
+              <el-radio-button label="custom">自定义</el-radio-button>
+            </el-radio-group>
+
+          <!-- 自定义日期范围选择器 -->
+          <div v-if="timeDimension === 'custom'" class="custom-date-picker">
+            <el-date-picker
+              v-model="customDateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+              @change="handleCustomDateChange"
+              :clearable="false"
+              style="width: 360px; margin-left: 12px"
+            />
+          </div>
         </div>
         <el-button type="primary" @click="handleGenerateReport">
           <el-icon><Document /></el-icon>
@@ -89,7 +105,7 @@
 
       <!-- 完成率/任务增长率趋势图 -->
       <div class="chart-container">
-        <h3>完成率趋势与任务增长率（{{ timeDimension === 'all' ? '全部' : (timeDimension === 'week' ? '近7天' : '近30天') }}）</h3>
+        <h3>完成率趋势与任务增长率（{{ timeDimension === 'week' ? '本周' : (timeDimension === 'month' ? '当月' : '自定义时间段') }}）</h3>
         <div ref="trendChart" class="chart"></div>
       </div>
 
@@ -129,8 +145,10 @@ const categoryChart = ref(null)
 const priorityChart = ref(null)
 const loading = ref(false)
 
-// 时间维度筛选：week-按周, month-按月
+// 时间维度筛选：week-本周, month-当月, custom-自定义
 const timeDimension = ref('week')
+// 自定义日期范围
+const customDateRange = ref([])
 
 let trendChartInstance = null
 let categoryChartInstance = null
@@ -139,26 +157,44 @@ let priorityChartInstance = null
 // 根据时间维度过滤任务
 const filteredTasks = computed(() => {
   const now = new Date()
-  let startDate
+  let startDate, endDate
 
   if (timeDimension.value === 'all') {
     // 全部：返回所有任务，不进行时间过滤
     return taskStore.tasks
   } else if (timeDimension.value === 'week') {
-    // 近7天
+    // 本周：周一至周日
+    const day = now.getDay() || 7 // 周日转为7
     startDate = new Date(now)
-    startDate.setDate(now.getDate() - 6)
+    startDate.setDate(now.getDate() - day + 1) // 周一
     startDate.setHours(0, 0, 0, 0)
+    
+    endDate = new Date(now)
+    endDate.setDate(now.getDate() + (7 - day)) // 周日
+    endDate.setHours(23, 59, 59, 999)
   } else if (timeDimension.value === 'month') {
-    // 近30天
-    startDate = new Date(now)
-    startDate.setDate(now.getDate() - 29)
+    // 当月：1日至月底
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1)
     startDate.setHours(0, 0, 0, 0)
+    
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    endDate.setHours(23, 59, 59, 999)
+  } else if (timeDimension.value === 'custom') {
+    // 自定义日期范围
+    if (customDateRange.value && customDateRange.value.length === 2) {
+      startDate = new Date(customDateRange.value[0])
+      startDate.setHours(0, 0, 0, 0)
+      
+      endDate = new Date(customDateRange.value[1])
+      endDate.setHours(23, 59, 59, 999)
+    } else {
+      return []
+    }
   }
 
   return taskStore.tasks.filter(task => {
     const taskDate = new Date(task.createdAt)
-    return taskDate >= startDate && taskDate <= now
+    return taskDate >= startDate && taskDate <= endDate
   })
 })
 
@@ -268,25 +304,28 @@ function initTrendChart() {
   trendChartInstance = echarts.init(trendChart.value)
 
   // 根据时间维度确定天数范围
-  let days
-  if (timeDimension.value === 'all') {
-    // 全部：计算所有任务的最早和最晚日期，显示完整的时间跨度
-    const tasks = taskStore.tasks
-    if (tasks.length === 0) {
-      days = 7 // 默认显示7天
+    let days
+    if (timeDimension.value === 'week') {
+      // 本周：7天
+      days = 7
+    } else if (timeDimension.value === 'month') {
+      // 当月：计算当月天数
+      const now = new Date()
+      days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    } else if (timeDimension.value === 'custom') {
+      // 自定义：计算日期范围天数
+      if (customDateRange.value && customDateRange.value.length === 2) {
+        const start = new Date(customDateRange.value[0])
+        const end = new Date(customDateRange.value[1])
+        const diffTime = Math.abs(end - start)
+        days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+      } else {
+        days = 7
+      }
     } else {
-      const dates = tasks.map(task => new Date(task.createdAt).getTime())
-      const minDate = new Date(Math.min(...dates))
-      const maxDate = new Date(Math.max(...dates))
-      const diffTime = Math.abs(maxDate - minDate)
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-      days = Math.max(diffDays, 1) // 至少显示1天
+      // 默认7天
+      days = 7
     }
-  } else if (timeDimension.value === 'week') {
-    days = 7
-  } else if (timeDimension.value === 'month') {
-    days = 30
-  }
 
   // 计算时间范围内的数据
   const dates = []
@@ -568,6 +607,12 @@ function initPriorityChart() {
 // 时间维度切换处理
 function handleTimeDimensionChange(value) {
   console.log('📊 [Statistics] 时间维度切换为:', value)
+  refreshCharts()
+}
+
+// 自定义日期范围变化处理
+function handleCustomDateChange(value) {
+  console.log('📊 [Statistics] 自定义日期范围:', value)
   refreshCharts()
 }
 
