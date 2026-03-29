@@ -204,6 +204,8 @@ const handleLogin = async () => {
 
   .login-tip {
     display: flex;
+    width: 100%;
+    height: 36px;
     align-items: center;
     gap: 6px;
     font-size: 13px;

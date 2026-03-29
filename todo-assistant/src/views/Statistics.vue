@@ -31,7 +31,7 @@
         <span>加载中...</span>
     </div>
 
-    <!-- 主内容区 -->
+  <!-- 主内容区 -->
     <div class="main-content">
 
       <!-- 时间维度筛选和生成报告 -->
@@ -39,9 +39,9 @@
         <div class="filter-group">
           <span class="filter-label">时间维度：</span>
             <el-radio-group v-model="timeDimension" @change="handleTimeDimensionChange">
-              <el-radio-button label="week">本周</el-radio-button>
-              <el-radio-button label="month">当月</el-radio-button>
-              <el-radio-button label="custom">自定义</el-radio-button>
+              <el-radio-button value="week">本周</el-radio-button>
+              <el-radio-button value="month">当月</el-radio-button>
+              <el-radio-button value="custom">自定义</el-radio-button>
             </el-radio-group>
 
           <!-- 自定义日期范围选择器 -->
@@ -71,10 +71,27 @@
             </el-button>
           </div>
         </div>
-        <el-button type="primary" @click="handleGenerateReport">
-          <el-icon><Document /></el-icon>
-          生成报告
-        </el-button>
+        
+        <!-- 生成报告按钮组 -->
+        <div class="report-button-group">
+          <el-button 
+            type="primary" 
+            @click="handleGenerateReport"
+            :loading="isGenerating"
+            size="large"
+          >
+            <el-icon><Document /></el-icon>
+            {{ isGenerating ? '生成中...' : '生成报告' }}
+          </el-button>
+          <el-button 
+            size="large"
+            @click="showReportLogDialog = true"
+          >
+            <el-icon><Tickets /></el-icon>
+            报告日志
+            <el-badge v-if="pendingReportsCount > 0" :value="pendingReportsCount" class="badge" />
+          </el-button>
+        </div>
       </div>
 
       <!-- 总览卡片 -->
@@ -132,6 +149,115 @@
         <div ref="priorityChart" class="chart"></div>
       </div>
     </div>
+
+<!-- 报告生成进度对话框 -->
+    <el-dialog 
+      v-model="reportDialogVisible" 
+      title="正在生成报告" 
+      width="450px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+      class="report-progress-dialog"
+    >
+      <div class="report-loading">
+        <el-icon class="is-loading" :size="48"><Loading /></el-icon>
+        <p>AI 正在分析您的任务数据，生成个性化报告...</p>
+        <p class="loading-tip">预计需要 30-60 秒，请耐心等待</p>
+        <div class="loading-progress">
+          <el-progress 
+            :percentage="reportProgress" 
+            :stroke-width="8"
+            :show-text="true"
+            :color="progressColor"
+          />
+        </div>
+        <div class="loading-actions">
+          <el-button text type="info" @click="handleCancelGenerate" size="small">
+            后台生成，稍后查看
+          </el-button>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 报告内容对话框 -->
+    <el-dialog 
+      v-model="showReportContentDialog" 
+      :title="currentReportTitle" 
+      width="80%"
+      :close-on-click-modal="false"
+      destroy-on-close
+      class="report-dialog"
+    >
+      <div class="report-content" v-html="currentReportHtml"></div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button type="primary" @click="handleExportCurrentReport" :icon="Download">
+            导出报告
+          </el-button>
+          <el-button @click="showReportContentDialog = false" :icon="Close">
+            关闭
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 报告日志对话框 -->
+    <el-dialog 
+      v-model="showReportLogDialog" 
+      title="报告生成日志" 
+      width="700px"
+      class="report-log-dialog"
+    >
+      <div class="report-log-list">
+        <div v-if="reportLogs.length === 0" class="empty-logs">
+          <el-icon><Document /></el-icon>
+          <p>暂无报告记录</p>
+          <p class="empty-tip">点击"生成报告"开始创建您的第一份复盘报告</p>
+        </div>
+        <div v-else class="log-items">
+          <div 
+            v-for="log in reportLogs" 
+            :key="log.id" 
+            class="log-item"
+            :class="{
+              'log-pending': log.status === 'pending',
+              'log-success': log.status === 'success',
+              'log-failed': log.status === 'failed'
+            }"
+          >
+            <div class="log-header">
+              <div class="log-info">
+                <el-icon v-if="log.status === 'pending'" class="is-loading"><Loading /></el-icon>
+                <el-icon v-else-if="log.status === 'success'"><CircleCheck /></el-icon>
+                <el-icon v-else><CircleClose /></el-icon>
+                <span class="log-title">{{ log.title }}</span>
+              </div>
+              <div class="log-time">{{ log.createTime }}</div>
+            </div>
+            <div class="log-date-range">时间范围：{{ log.dateRange }}</div>
+            <div class="log-actions" v-if="log.status === 'success'">
+              <!-- 只保留导出按钮，移除查看按钮 -->
+              <el-button size="small" type="primary" @click="exportReportLog(log)">
+                <el-icon><Download /></el-icon>
+                导出报告
+              </el-button>
+              <el-button size="small" type="danger" @click="deleteReportLog(log)">
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
+            </div>
+            <div class="log-error" v-if="log.status === 'failed' && log.error">
+              <el-icon><Warning /></el-icon>
+              {{ log.error }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showReportLogDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -140,12 +266,11 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useTaskStore } from '@/stores/task'
 import { useUserStore } from '@/stores/user'
 import * as echarts from 'echarts'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { Refresh, List, ChatDotRound, Document, RefreshLeft } from '@element-plus/icons-vue'
+import { Refresh, List, ChatDotRound, Document, RefreshLeft, Download, Close, Tickets, Loading, CircleCheck, CircleClose, View, Delete, Warning } from '@element-plus/icons-vue'
 import StatCard from '@/components/StatCard.vue'
-import { getTaskList } from '@/api/task'
-import { Loading } from '@element-plus/icons-vue'
+import { getTaskList, generateReport,generateReportAsync, getReportStatus, getReportLogs,deleteReportLog as deleteReportLogApi } from '@/api/task'
 
 const router = useRouter()
 const taskStore = useTaskStore()
@@ -155,6 +280,34 @@ const trendChart = ref(null)
 const categoryChart = ref(null)
 const priorityChart = ref(null)
 const loading = ref(false)
+
+// 报告相关状态
+const reportDialogVisible = ref(false)
+const showReportContentDialog = ref(false)
+const showReportLogDialog = ref(false)
+const isGenerating = ref(false)
+const currentReportId = ref(null)
+const currentReportTitle = ref('')
+const currentReportHtml = ref('')
+const currentRawReport = ref('')
+const reportProgress = ref(0)
+let progressInterval = null
+let pollingInterval = null
+
+// 报告日志列表
+const reportLogs = ref([])
+
+// 待处理报告数量
+const pendingReportsCount = computed(() => {
+  return reportLogs.value.filter(log => log.status === 'pending').length
+})
+
+// 进度条颜色
+const progressColor = computed(() => {
+  if (reportProgress.value < 30) return '#409EFF'
+  if (reportProgress.value < 70) return '#E6A23C'
+  return '#67C23A'
+})
 
 // 时间维度筛选：week-本周, month-当月, custom-自定义
 const timeDimension = ref('week')
@@ -315,6 +468,310 @@ async function loadTasksFromAPI() {
     return []
   } finally {
     loading.value = false
+  }
+}
+// 启动进度动画
+function startProgressAnimation() {
+  reportProgress.value = 0
+  if (progressInterval) clearInterval(progressInterval)
+  
+  progressInterval = setInterval(() => {
+    if (reportProgress.value < 90) {
+      const increment = reportProgress.value < 30 ? 10 : (reportProgress.value < 60 ? 5 : 2)
+      reportProgress.value = Math.min(reportProgress.value + increment, 90)
+    }
+  }, 3000)
+}
+
+// 停止进度动画
+function stopProgressAnimation() {
+  if (progressInterval) {
+    clearInterval(progressInterval)
+    progressInterval = null
+  }
+  reportProgress.value = 100
+  setTimeout(() => {
+    reportProgress.value = 0
+  }, 500)
+}
+
+// Statistics.vue - 修改轮询函数，传入 userId
+function startPolling(reportId) {
+  if (pollingInterval) clearInterval(pollingInterval)
+  
+  pollingInterval = setInterval(async () => {
+    try {
+      // 传入 userId
+      const result = await getReportStatus(reportId, userStore.userId)
+      
+      if (result.status === 'success') {
+        clearInterval(pollingInterval)
+        pollingInterval = null
+        stopProgressAnimation()
+        isGenerating.value = false
+        reportDialogVisible.value = false
+        
+        // 刷新日志列表
+        await loadReportLogs()
+        
+        ElMessage.success('报告生成成功！')
+        
+      } else if (result.status === 'failed') {
+        clearInterval(pollingInterval)
+        pollingInterval = null
+        stopProgressAnimation()
+        isGenerating.value = false
+        reportDialogVisible.value = false
+        
+        ElMessage.error('报告生成失败：' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('轮询报告状态失败:', error)
+    }
+  }, 3000)
+}
+
+// 加载报告日志
+async function loadReportLogs() {
+  try {
+    const logs = await getReportLogs(userStore.userId)
+    reportLogs.value = logs
+  } catch (error) {
+    console.error('加载报告日志失败:', error)
+  }
+}
+
+// 生成报告处理（异步模式）
+async function handleGenerateReport() {
+  if (isGenerating.value) {
+    ElMessage.warning('已有报告正在生成中，请稍后再试')
+    return
+  }
+  
+  isGenerating.value = true
+  reportDialogVisible.value = true
+  startProgressAnimation()
+  
+  try {
+    console.log('📄 [Statistics] 开始异步生成报告')
+    
+    const { startDate, endDate } = getCurrentDateRange()
+    const dateRangeText = `${startDate} 至 ${endDate}`
+    const title = `复盘报告_${startDate}_${endDate}`
+    
+    console.log('📅 [Statistics] 报告时间范围:', startDate, '至', endDate)
+    
+    // 调用异步生成API
+    const response = await generateReportAsync({
+      user_id: userStore.userId,
+      start_date: startDate,
+      end_date: endDate,
+      title: title
+    })
+    
+    currentReportId.value = response.report_id
+    
+    // 添加到日志列表
+    const newLog = {
+      id: response.report_id,
+      title: title,
+      dateRange: dateRangeText,
+      createTime: new Date().toLocaleString('zh-CN'),
+      status: 'pending',
+      content: null,
+      error: null
+    }
+    reportLogs.value.unshift(newLog)
+    
+    // 开始轮询
+    startPolling(response.report_id)
+    
+  } catch (error) {
+    console.error('❌ [Statistics] 生成报告失败:', error)
+    ElMessage.error('生成报告失败：' + error.message)
+    reportDialogVisible.value = false
+    isGenerating.value = false
+    stopProgressAnimation()
+  }
+}
+
+// 取消生成（后台继续）
+function handleCancelGenerate() {
+  reportDialogVisible.value = false
+  ElMessage.info('报告正在后台生成，可在"报告日志"中查看结果')
+}
+
+// 获取当前筛选的日期范围
+function getCurrentDateRange() {
+  const now = new Date()
+  let startDate, endDate
+  
+  if (timeDimension.value === 'week') {
+    const day = now.getDay() || 7
+    startDate = new Date(now)
+    startDate.setDate(now.getDate() - day + 1)
+    startDate.setHours(0, 0, 0, 0)
+    
+    endDate = new Date(now)
+    endDate.setDate(now.getDate() + (7 - day))
+    endDate.setHours(23, 59, 59, 999)
+    
+  } else if (timeDimension.value === 'month') {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    startDate.setHours(0, 0, 0, 0)
+    
+    endDate = new Date(now)
+    endDate.setHours(23, 59, 59, 999)
+    
+  } else if (timeDimension.value === 'custom' && customDateRange.value.length === 2) {
+    startDate = new Date(customDateRange.value[0])
+    startDate.setHours(0, 0, 0, 0)
+    
+    endDate = new Date(customDateRange.value[1])
+    endDate.setHours(23, 59, 59, 999)
+    
+  } else {
+    startDate = new Date(now)
+    startDate.setDate(now.getDate() - 6)
+    startDate.setHours(0, 0, 0, 0)
+    
+    endDate = new Date(now)
+    endDate.setHours(23, 59, 59, 999)
+  }
+  
+  const formatDate = (date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  
+  return {
+    startDate: formatDate(startDate),
+    endDate: formatDate(endDate)
+  }
+}
+
+// 查看报告
+function viewReport(log) {
+  if (log.content) {
+    currentReportTitle.value = log.title
+    currentRawReport.value = log.content
+    formatReportContent(log.content)
+    showReportContentDialog.value = true
+  } else {
+    ElMessage.warning('报告内容不存在')
+  }
+}
+
+// 格式化报告内容
+function formatReportContent(markdown) {
+  let html = markdown
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    .replace(/\|(.+)\|/g, (match) => {
+      const cells = match.split('|').filter(cell => cell.trim())
+      if (cells.some(cell => cell.includes('---'))) {
+        return ''
+      }
+      const cellHtml = cells.map(cell => `<td>${cell.trim()}</td>`).join('')
+      return `<tr>${cellHtml}</tr>`
+    })
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/^\- (.*$)/gim, '<li>$1</li>')
+    .replace(/^\d+\. (.*$)/gim, '<li>$1</li>')
+    .replace(/\n/g, '<br>')
+  
+  html = html.replace(/(<tr>[\s\S]*?<\/tr>)/g, '<table>$1</table>')
+  html = html.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+  
+  currentReportHtml.value = html
+}
+
+// 导出当前报告
+function handleExportCurrentReport() {
+  if (!currentRawReport.value) {
+    ElMessage.warning('没有可导出的报告内容')
+    return
+  }
+  
+  try {
+    const blob = new Blob([currentRawReport.value], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${currentReportTitle.value}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success('报告导出成功')
+  } catch (error) {
+    console.error('❌ [Statistics] 导出报告失败:', error)
+    ElMessage.error('导出报告失败：' + error.message)
+  }
+}
+
+// 导出报告（直接从工作流重新生成）
+async function exportReportLog(log) {
+  const loading = ElMessage.loading('正在生成报告内容...', { duration: 0 })
+  
+  try {
+    // 重新调用工作流生成报告内容
+    const reportContent = await generateReport({
+      user_id: userStore.userId,
+      start_date: log.startDate,
+      end_date: log.endDate
+    })
+    
+    if (reportContent) {
+      const blob = new Blob([reportContent], { type: 'text/markdown;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${log.title}.md`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      ElMessage.success('报告导出成功')
+    } else {
+      ElMessage.error('报告内容为空')
+    }
+  } catch (error) {
+    console.error('导出报告失败:', error)
+    ElMessage.error('导出失败：' + error.message)
+  } finally {
+    loading.close()
+  }
+}
+
+// 删除报告日志
+async function deleteReportLog(log) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除报告"${log.title}"吗？`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    await deleteReportLogApi(log.id, userStore.userId)
+    reportLogs.value = reportLogs.value.filter(l => l.id !== log.id)
+    ElMessage.success('删除成功')
+    
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除失败:', error)
+      ElMessage.error('删除失败')
+    }
   }
 }
 
@@ -636,13 +1093,6 @@ function handleCustomDateChange(value) {
   refreshCharts()
 }
 
-// 生成报告处理（空函数）
-function handleGenerateReport() {
-  console.log('📄 [Statistics] 点击生成报告按钮')
-  ElMessage.info('生成报告功能开发中...')
-}
-
-
 
 // 刷新所有图表
 function refreshCharts() {
@@ -659,19 +1109,16 @@ function refreshCharts() {
 
 function handleRefresh() {
   loading.value = true
-
-  console.log('🔄 [Statistics] 手动刷新')
-  
   loadTasksFromAPI().then(() => {
-    try{
+    try {
       refreshCharts()
+      loadReportLogs()
       ElMessage.success('数据已刷新')
     } catch (error) {
-        ElMessage.error('数据刷新失败')
+      ElMessage.error('数据刷新失败')
     } finally {
-    // ✅ 隐藏遮罩
-    loading.value = false
-   }
+      loading.value = false
+    }
   })
 }
 
@@ -725,7 +1172,7 @@ onMounted(() => {
       refreshCharts()
     }, 300)
   })
-
+  loadReportLogs()
   window.addEventListener('resize', handleResize)
 })
 
@@ -735,6 +1182,8 @@ onUnmounted(() => {
   trendChartInstance?.dispose()
   categoryChartInstance?.dispose()
   priorityChartInstance?.dispose()
+  stopProgressAnimation()
+  if (pollingInterval) clearInterval(pollingInterval)
 })
 </script>
 
@@ -974,6 +1423,301 @@ onUnmounted(() => {
     .custom-date-picker {
       display: flex;
       align-items: center;
+    }
+  }
+}
+// 报告内容样式
+.report-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  background: #f5f7fa;
+  
+  // Markdown 内容样式
+  h1, h2, h3, h4, h5, h6 {
+    margin: 20px 0 12px 0;
+    color: #303133;
+    font-weight: 600;
+  }
+
+  h1 {
+    font-size: 28px;
+    border-bottom: 2px solid #e5e5e5;
+    padding-bottom: 12px;
+  }
+
+  h2 {
+    font-size: 24px;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 8px;
+  }
+
+  h3 {
+    font-size: 20px;
+  }
+
+  h4 {
+    font-size: 18px;
+  }
+
+  p {
+    margin: 12px 0;
+    line-height: 1.8;
+    color: #606266;
+  }
+
+  strong {
+    color: #303133;
+    font-weight: 600;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+
+    th, td {
+      padding: 12px;
+      border: 1px solid #e5e5e5;
+      text-align: left;
+      color: #606266;
+    }
+
+    th {
+      background-color: #f5f7fa;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    tr:hover {
+      background-color: #f9fafc;
+    }
+  }
+
+  ul, ol {
+    margin: 12px 0;
+    padding-left: 24px;
+    color: #606266;
+
+    li {
+      margin: 6px 0;
+      line-height: 1.8;
+    }
+  }
+
+  code {
+    background-color: #f5f7fa;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+  }
+
+  blockquote {
+    border-left: 4px solid #409EFF;
+    padding-left: 16px;
+    margin: 16px 0;
+    color: #909399;
+    font-style: italic;
+  }
+}
+
+// 对话框底部按钮样式
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  
+  .el-button {
+    min-width: 100px;
+    
+    .el-icon {
+      margin-right: 6px;
+    }
+  }
+}
+
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+// 报告按钮组
+.report-button-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  
+  .badge {
+    margin-left: 4px;
+  }
+}
+
+// 报告进度对话框 - 居中样式
+:deep(.report-progress-dialog) {
+  .el-dialog {
+    border-radius: 16px;
+    
+    .el-dialog__header {
+      text-align: center;
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    
+    .el-dialog__body {
+      text-align: center;
+      padding: 20px 30px 30px;
+    }
+  }
+}
+
+// 报告加载样式（居中）
+.report-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  
+  .el-icon {
+    color: #409EFF;
+    margin-bottom: 24px;
+  }
+  
+  p {
+    font-size: 16px;
+    color: #303133;
+    margin: 0 0 12px 0;
+  }
+  
+  .loading-tip {
+    font-size: 14px;
+    color: #909399;
+    margin-bottom: 24px;
+  }
+  
+  .loading-progress {
+    width: 100%;
+    margin: 16px 0;
+  }
+  
+  .loading-actions {
+    margin-top: 20px;
+  }
+}
+
+// 报告日志对话框样式
+.report-log-dialog {
+  .report-log-list {
+    min-height: 300px;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+  
+  .empty-logs {
+    text-align: center;
+    padding: 60px 20px;
+    color: #909399;
+    
+    .el-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+    
+    p {
+      margin: 8px 0;
+    }
+    
+    .empty-tip {
+      font-size: 12px;
+      color: #c0c4cc;
+    }
+  }
+  
+  .log-items {
+    .log-item {
+      padding: 16px;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      background: #f5f7fa;
+      transition: all 0.3s;
+      
+      &:hover {
+        background: #ecf5ff;
+      }
+      
+      &.log-pending {
+        border-left: 3px solid #E6A23C;
+      }
+      
+      &.log-success {
+        border-left: 3px solid #67C23A;
+      }
+      
+      &.log-failed {
+        border-left: 3px solid #F56C6C;
+      }
+      
+      .log-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        
+        .log-info {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          
+          .el-icon {
+            font-size: 18px;
+            
+            &.is-loading {
+              color: #E6A23C;
+            }
+          }
+          
+          .log-title {
+            font-weight: 600;
+            color: #303133;
+          }
+        }
+        
+        .log-time {
+          font-size: 12px;
+          color: #909399;
+        }
+      }
+      
+      .log-date-range {
+        font-size: 13px;
+        color: #606266;
+        margin-bottom: 12px;
+        padding-left: 26px;
+      }
+      
+      .log-actions {
+        padding-left: 26px;
+        display: flex;
+        gap: 8px;
+      }
+      
+      .log-error {
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: #fef0f0;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #F56C6C;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
     }
   }
 }

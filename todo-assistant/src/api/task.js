@@ -8,6 +8,7 @@
 
 import { callCozeBot } from './coze';
 
+
 /**
  * 查询任务列表
  * @param {Object} filters - 筛选条件
@@ -170,7 +171,7 @@ function formatTaskData(task) {
   };
 }
 /**
- * 格式化日期时间
+ * 格式化日期时间（用于数据库存储）
  * @param {string|Date} datetime - 日期时间
  * @returns {string} 格式化后的日期时间：YYYY-MM-DD HH:mm:ss
  */
@@ -179,21 +180,17 @@ function formatDateTime(datetime) {
   
   if (typeof datetime === 'string') {
     // 如果已经是格式化过的字符串，直接返回
-    // 匹配格式：2026-03-25 15:00:00
     if (datetime.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
       return datetime;
     }
-    
     // 匹配格式：2026-03-25 15:00（只有时分）
     if (datetime.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)) {
       return datetime + ':00';
     }
-    
     // 匹配格式：2026-03-25（只有日期）
     if (datetime.match(/^\d{4}-\d{2}-\d{2}$/)) {
       return datetime + ' 00:00:00';
     }
-    
     // 尝试解析
     const parsedDate = new Date(datetime);
     if (!isNaN(parsedDate.getTime())) {
@@ -221,24 +218,20 @@ function formatDateTimeForDisplay(datetime) {
   if (typeof datetime === 'string') {
     // 匹配格式：2026-03-25 15:00:00
     if (datetime.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
-      // 返回 YYYY-MM-DD HH:mm 格式，去掉秒
       const match = datetime.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}):\d{2}$/);
       if (match) {
         return `${match[1]} ${match[2]}`;
       }
     }
-    
     // 匹配格式：2026-03-25 15:00
     if (datetime.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)) {
       return datetime;
     }
-    
-    // 匹配格式：2026-03-25（只有日期）
+    // 匹配格式：2026-03-25
     if (datetime.match(/^\d{4}-\d{2}-\d{2}$/)) {
       return datetime;
     }
-    
-    // 尝试解析其他格式
+    // 尝试解析
     const parsedDate = new Date(datetime);
     if (!isNaN(parsedDate.getTime())) {
       const year = parsedDate.getFullYear();
@@ -253,6 +246,24 @@ function formatDateTimeForDisplay(datetime) {
   return datetime;
 }
 
+/**
+ * 格式化显示日期时间（用于报告日志）
+ * @param {string} datetime - 日期时间字符串
+ * @returns {string} 格式化后的日期时间
+ */
+function formatDisplayDateTime(datetime) {
+  if (!datetime) return '';
+  
+  if (typeof datetime === 'string') {
+    if (datetime.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+      return datetime.replace(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}):\d{2}/, '$1 $2');
+    }
+    if (datetime.includes('T')) {
+      return datetime.replace('T', ' ').substring(0, 16);
+    }
+  }
+  return datetime;
+}
 /**
  * 添加任务
  * @param {Object} task - 任务数据
@@ -351,6 +362,264 @@ export async function countTasks(filters = {}, userId = 'user_default') {
   }
 }
 
+/**
+ * 生成任务复盘报告（同步）
+ * @param {Object} params - 请求参数
+ * @param {string} params.user_id - 用户ID
+ * @param {string} params.start_date - 开始日期(YYYY-MM-DD)
+ * @param {string} params.end_date - 结束日期(YYYY-MM-DD)
+ * @returns {Promise<string>} Markdown格式的报告内容
+ */
+export async function generateReport(params) {
+  console.log('📄 [task.js] 开始生成报告', params);
+  
+  const query = `调用工作流 report_created 生成任务复盘报告。
+参数：
+- user_id: ${params.user_id}
+- start_date: ${params.start_date}
+- end_date: ${params.end_date}
+
+请返回工作流的 string 输出变量（Markdown格式的报告内容）。`;
+  
+  try {
+    const response = await callCozeBot(query, params.user_id);
+    console.log('✅ [task.js] 报告生成成功');
+    return response.content || '';
+  } catch (error) {
+    console.error('❌ [task.js] 生成报告失败:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * 异步生成任务复盘报告（极简版 - 只触发工作流，不操作数据库）
+ */
+export async function generateReportAsync(params) {
+  console.log('📄 [task.js] 开始异步生成报告', params);
+  
+  // 生成报告ID
+  const reportId = `${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+  const generatingKey = `generating_${reportId}`;
+  
+  // 防止重复调用
+  if (sessionStorage.getItem(generatingKey)) {
+    console.log('⚠️ 报告正在生成中，跳过重复调用');
+    return { report_id: reportId };
+  }
+  sessionStorage.setItem(generatingKey, 'true');
+  
+  // ✅ 直接调用工作流，让工作流自己完成 INSERT 和 UPDATE
+  const query = `调用工作流 report_created 生成任务复盘报告。
+参数：
+- user_id: ${params.user_id}
+- start_date: ${params.start_date}
+- end_date: ${params.end_date}
+- report_id: ${reportId}`;
+  
+  try {
+    // 异步调用，不等待结果（后台执行）
+    callCozeBot(query, params.user_id).catch(err => {
+      console.error('后台生成报告失败:', err);
+      sessionStorage.removeItem(generatingKey);
+    });
+    
+    console.log('✅ 报告生成任务已提交，ID:', reportId);
+    return { report_id: reportId };
+    
+  } catch (error) {
+    console.error('❌ 提交报告生成任务失败:', error);
+    sessionStorage.removeItem(generatingKey);
+    throw error;
+  }
+}
+
+/**
+ * 获取报告生成状态（只查询，不操作数据库）
+ */
+export async function getReportStatus(reportId, userId) {
+  console.log('📄 [task.js] 查询报告状态:', reportId);
+  
+  const query = `查询报告状态：
+报告ID: ${reportId}
+用户ID: ${userId}
+
+返回JSON格式：
+{
+  "status": "pending|success|failed",
+  "report_content": ""
+}`;
+  
+  try {
+    const response = await callCozeBot(query, userId);
+    console.log('📥 状态查询响应:', response);
+    
+    const result = parseStatusFromResponse(response);
+    console.log('📊 解析后的状态:', result);
+    
+    if (result && (result.status === 'success' || result.status === 'completed')) {
+      return {
+        status: 'success',
+        report: result.report_content || '',
+        error: null
+      };
+    } else if (result && result.status === 'failed') {
+      return {
+        status: 'failed',
+        report: null,
+        error: result.error_msg || '生成失败'
+      };
+    } else {
+      return {
+        status: 'pending',
+        report: null,
+        error: null
+      };
+    }
+  } catch (error) {
+    console.error('查询报告状态失败:', error);
+    return { status: 'pending', report: null, error: null };
+  }
+}
+
+/**
+ * 获取用户的报告日志列表
+ */
+export async function getReportLogs(userId) {
+  console.log('📄 [task.js] 获取报告日志列表, userId:', userId);
+  
+  const query = `查询我的所有复盘报告，返回纯JSON格式数据，只需要 report_id, start_date, end_date, created_at, status 字段，不要返回 report_content 字段。
+
+返回格式要求（必须是纯JSON）：
+{
+  "type": "report_list",
+  "data": {
+    "total": 报告总数,
+    "reports": [
+      {
+        "report_id": "报告ID",
+        "start_date": "开始日期",
+        "end_date": "结束日期",
+        "created_at": "创建时间",
+        "status": "状态"
+      }
+    ]
+  }
+}`;
+  
+  try {
+    const response = await callCozeBot(query, userId);
+    const logs = parseReportLogsFromResponse(response);
+    console.log(`✅ 获取到 ${logs.length} 条报告日志`);
+    return logs;
+  } catch (error) {
+    console.error('获取报告日志失败:', error);
+    return [];
+  }
+}
+
+/**
+ * 删除报告日志
+ */
+export async function deleteReportLog(reportId, userId) {
+  console.log('📄 [task.js] 删除报告日志:', reportId);
+  
+  const query = `删除复盘报告：
+报告ID: ${reportId}
+用户ID: ${userId}`;
+  
+  try {
+    await callCozeBot(query, userId);
+    return { success: true };
+  } catch (error) {
+    console.error('删除报告日志失败:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 解析状态查询响应
+ */
+function parseStatusFromResponse(response) {
+  if (!response || !response.content) return null;
+  
+  try {
+    const content = response.content;
+    let jsonStr = content;
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+    }
+    
+    return JSONBig.parse(jsonStr);
+  } catch (error) {
+    console.error('解析状态查询响应失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 解析报告日志列表
+ */
+function parseReportLogsFromResponse(response) {
+  if (!response || !response.content) return [];
+
+  const content = response.content;
+  console.log('📝 解析报告日志响应内容长度:', content.length);
+
+  try {
+    let jsonStr = content;
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+    }
+    
+    const jsonData = JSONBig.parse(jsonStr);
+    
+    let reports = [];
+    if (jsonData && jsonData.data && jsonData.data.reports) {
+      reports = jsonData.data.reports;
+    } else if (jsonData && Array.isArray(jsonData.reports)) {
+      reports = jsonData.reports;
+    } else if (Array.isArray(jsonData)) {
+      reports = jsonData;
+    } else {
+      console.warn('无法识别的格式:', jsonData);
+      return [];
+    }
+    
+    return reports.map(report => {
+      let statusType = 'pending';
+      if (report.status === 'success' || report.status === 'completed') {
+        statusType = 'success';
+      } else if (report.status === 'failed') {
+        statusType = 'failed';
+      }
+      
+      return {
+        id: report.id,
+        title: `复盘报告_${report.start_date || ''}_${report.end_date || ''}`,
+        dateRange: `${report.start_date || ''} 至 ${report.end_date || ''}`,
+        createTime: formatDisplayDateTime(report.created_at),
+        status: statusType,
+        startDate: report.start_date,
+        endDate: report.end_date,
+        content: null,
+        error: null
+      };
+    });
+    
+  } catch (error) {
+    console.error('❌ 解析报告日志列表失败:', error);
+    return [];
+  }
+}
+
+// 导出新增的函数
 export default {
   getTaskList,
   addTask,
@@ -358,6 +627,11 @@ export default {
   deleteTask,
   updateTaskStatus,
   countTasks,
+  generateReport,        // ✅ 确保这一行存在
+  generateReportAsync,   // 新增：异步生成
+  getReportStatus,       // 新增：查询状态
+  getReportLogs,         // 新增：获取日志列表
+  deleteReportLog,       // 新增：删除日志
   parseTaskListFromResponse,
   formatTaskData
 };

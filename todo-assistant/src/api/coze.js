@@ -93,7 +93,7 @@ export async function callCozeBot(query, userId = 'user_default', conversationId
           'Authorization': `Bearer ${COZE_CONFIG.api_key}`,
           'Content-Type': 'application/json'
         },
-        timeout: 60000  // 🔥 设置超时时间为60秒，避免默认30秒超时导致请求失败
+        timeout: 120000  // 🔥 设置超时时间为60秒，避免默认30秒超时导致请求失败
       })
     }, 2)  // 最大重试2次
 
