@@ -1,4 +1,3 @@
-
 /**
  * 待办任务 API
  * 
@@ -363,127 +362,44 @@ export async function countTasks(filters = {}, userId = 'user_default') {
 }
 
 /**
- * 生成任务复盘报告（同步）
+ * 同步生成任务复盘报告
+ * 直接等待 Bot 返回 Markdown 格式报告内容
  * @param {Object} params - 请求参数
  * @param {string} params.user_id - 用户ID
  * @param {string} params.start_date - 开始日期(YYYY-MM-DD)
  * @param {string} params.end_date - 结束日期(YYYY-MM-DD)
- * @returns {Promise<string>} Markdown格式的报告内容
+ * @param {string} params.title - 报告标题（可选）
+ * @returns {Promise<{ content: string, title: string }>} Markdown 格式的报告内容
  */
 export async function generateReport(params) {
-  console.log('📄 [task.js] 开始生成报告', params);
-  
+  console.log('📄 [task.js] 开始同步生成报告', params);
+
   const query = `调用工作流 report_created 生成任务复盘报告。
 参数：
 - user_id: ${params.user_id}
 - start_date: ${params.start_date}
 - end_date: ${params.end_date}
 
-请返回工作流的 string 输出变量（Markdown格式的报告内容）。`;
-  
+请返回工作流的 string 输出变量（Markdown格式的报告内容）。不要添加任何额外文字，只返回 Markdown 报告正文。`;
+
   try {
     const response = await callCozeBot(query, params.user_id);
     console.log('✅ [task.js] 报告生成成功');
-    return response.content || '';
+
+    const content = response.content || '';
+
+    return {
+      content,
+      title: params.title || `复盘报告_${params.start_date}_${params.end_date}`
+    };
   } catch (error) {
     console.error('❌ [task.js] 生成报告失败:', error);
     throw error;
   }
 }
 
-
 /**
- * 异步生成任务复盘报告（极简版 - 只触发工作流，不操作数据库）
- */
-export async function generateReportAsync(params) {
-  console.log('📄 [task.js] 开始异步生成报告', params);
-  
-  // 生成报告ID
-  const reportId = `${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
-  const generatingKey = `generating_${reportId}`;
-  
-  // 防止重复调用
-  if (sessionStorage.getItem(generatingKey)) {
-    console.log('⚠️ 报告正在生成中，跳过重复调用');
-    return { report_id: reportId };
-  }
-  sessionStorage.setItem(generatingKey, 'true');
-  
-  // ✅ 直接调用工作流，让工作流自己完成 INSERT 和 UPDATE
-  const query = `调用工作流 report_created 生成任务复盘报告。
-参数：
-- user_id: ${params.user_id}
-- start_date: ${params.start_date}
-- end_date: ${params.end_date}
-- report_id: ${reportId}`;
-  
-  try {
-    // 异步调用，不等待结果（后台执行）
-    callCozeBot(query, params.user_id).catch(err => {
-      console.error('后台生成报告失败:', err);
-      sessionStorage.removeItem(generatingKey);
-    });
-    
-    console.log('✅ 报告生成任务已提交，ID:', reportId);
-    return { report_id: reportId };
-    
-  } catch (error) {
-    console.error('❌ 提交报告生成任务失败:', error);
-    sessionStorage.removeItem(generatingKey);
-    throw error;
-  }
-}
-
-/**
- * 获取报告生成状态（只查询，不操作数据库）
- */
-export async function getReportStatus(reportId, userId) {
-  console.log('📄 [task.js] 查询报告状态:', reportId);
-  
-  const query = `查询报告状态：
-报告ID: ${reportId}
-用户ID: ${userId}
-
-返回JSON格式：
-{
-  "status": "pending|success|failed",
-  "report_content": ""
-}`;
-  
-  try {
-    const response = await callCozeBot(query, userId);
-    console.log('📥 状态查询响应:', response);
-    
-    const result = parseStatusFromResponse(response);
-    console.log('📊 解析后的状态:', result);
-    
-    if (result && (result.status === 'success' || result.status === 'completed')) {
-      return {
-        status: 'success',
-        report: result.report_content || '',
-        error: null
-      };
-    } else if (result && result.status === 'failed') {
-      return {
-        status: 'failed',
-        report: null,
-        error: result.error_msg || '生成失败'
-      };
-    } else {
-      return {
-        status: 'pending',
-        report: null,
-        error: null
-      };
-    }
-  } catch (error) {
-    console.error('查询报告状态失败:', error);
-    return { status: 'pending', report: null, error: null };
-  }
-}
-
-/**
- * 获取用户的报告日志列表
+ * 获取报告日志列表（保留，供报告日志功能使用）
  */
 export async function getReportLogs(userId) {
   console.log('📄 [task.js] 获取报告日志列表, userId:', userId);
@@ -538,36 +454,12 @@ export async function deleteReportLog(reportId, userId) {
 }
 
 /**
- * 解析状态查询响应
- */
-function parseStatusFromResponse(response) {
-  if (!response || !response.content) return null;
-  
-  try {
-    const content = response.content;
-    let jsonStr = content;
-    const firstBrace = jsonStr.indexOf('{');
-    const lastBrace = jsonStr.lastIndexOf('}');
-    
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
-    }
-    
-    return JSONBig.parse(jsonStr);
-  } catch (error) {
-    console.error('解析状态查询响应失败:', error);
-    return null;
-  }
-}
-
-/**
  * 解析报告日志列表
  */
 function parseReportLogsFromResponse(response) {
   if (!response || !response.content) return [];
 
   const content = response.content;
-  console.log('📝 解析报告日志响应内容长度:', content.length);
 
   try {
     let jsonStr = content;
@@ -588,7 +480,6 @@ function parseReportLogsFromResponse(response) {
     } else if (Array.isArray(jsonData)) {
       reports = jsonData;
     } else {
-      console.warn('无法识别的格式:', jsonData);
       return [];
     }
     
@@ -619,7 +510,7 @@ function parseReportLogsFromResponse(response) {
   }
 }
 
-// 导出新增的函数
+// 导出
 export default {
   getTaskList,
   addTask,
@@ -627,11 +518,9 @@ export default {
   deleteTask,
   updateTaskStatus,
   countTasks,
-  generateReport,        // ✅ 确保这一行存在
-  generateReportAsync,   // 新增：异步生成
-  getReportStatus,       // 新增：查询状态
-  getReportLogs,         // 新增：获取日志列表
-  deleteReportLog,       // 新增：删除日志
+  generateReport,
+  getReportLogs,
+  deleteReportLog,
   parseTaskListFromResponse,
   formatTaskData
 };

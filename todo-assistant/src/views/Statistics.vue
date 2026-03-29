@@ -27,22 +27,22 @@
     </div>
 
     <div v-if="loading" class="loading-overlay">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <span>加载中...</span>
+      <el-icon class="is-loading"><Loading /></el-icon>
+      <span>加载中...</span>
     </div>
 
-  <!-- 主内容区 -->
+    <!-- 主内容区 -->
     <div class="main-content">
 
       <!-- 时间维度筛选和生成报告 -->
       <div class="filter-actions">
         <div class="filter-group">
           <span class="filter-label">时间维度：</span>
-            <el-radio-group v-model="timeDimension" @change="handleTimeDimensionChange">
-              <el-radio-button value="week">本周</el-radio-button>
-              <el-radio-button value="month">当月</el-radio-button>
-              <el-radio-button value="custom">自定义</el-radio-button>
-            </el-radio-group>
+          <el-radio-group v-model="timeDimension" @change="handleTimeDimensionChange">
+            <el-radio-button value="week">本周</el-radio-button>
+            <el-radio-button value="month">当月</el-radio-button>
+            <el-radio-button value="custom">自定义</el-radio-button>
+          </el-radio-group>
 
           <!-- 自定义日期范围选择器 -->
           <div v-if="timeDimension === 'custom'" class="custom-date-picker">
@@ -58,7 +58,6 @@
               :clearable="false"
               style="width: 360px; margin-left: 12px"
             />
-
             <el-button
               :type="hasCustomDateRange ? 'primary' : 'info'"
               :plain="!hasCustomDateRange"
@@ -71,25 +70,17 @@
             </el-button>
           </div>
         </div>
-        
-        <!-- 生成报告按钮组 -->
+
+        <!-- 生成报告按钮 -->
         <div class="report-button-group">
-          <el-button 
-            type="primary" 
+          <el-button
+            type="primary"
             @click="handleGenerateReport"
             :loading="isGenerating"
             size="large"
           >
-            <el-icon><Document /></el-icon>
-            {{ isGenerating ? '生成中...' : '生成报告' }}
-          </el-button>
-          <el-button 
-            size="large"
-            @click="showReportLogDialog = true"
-          >
-            <el-icon><Tickets /></el-icon>
-            报告日志
-            <el-badge v-if="pendingReportsCount > 0" :value="pendingReportsCount" class="badge" />
+            <el-icon v-if="!isGenerating"><Document /></el-icon>
+            {{ isGenerating ? 'AI 生成中...' : '生成复盘报告' }}
           </el-button>
         </div>
       </div>
@@ -101,7 +92,7 @@
         <StatCard title="待办数" :value="filteredStats.pending" />
         <StatCard title="已过期" :value="filteredStats.expired" />
       </div>
-      
+
       <!-- 完成率统计卡片（并列显示） -->
       <div class="overview-cards">
         <div class="rate-card blue-card">
@@ -120,7 +111,7 @@
             <div class="rate-desc">截止时间前主动完成的任务占比</div>
           </div>
         </div>
-                <div class="rate-card red-card">
+        <div class="rate-card red-card">
           <div class="rate-icon">⚠️</div>
           <div class="rate-content">
             <div class="rate-title">逾期率</div>
@@ -129,7 +120,6 @@
           </div>
         </div>
       </div>
-
 
       <!-- 完成率/任务增长率趋势图 -->
       <div class="chart-container">
@@ -150,127 +140,108 @@
       </div>
     </div>
 
-<!-- 报告生成进度对话框 -->
-    <el-dialog 
-      v-model="reportDialogVisible" 
-      title="正在生成报告" 
-      width="450px"
+    <!-- ========== 报告生成中 Loading 对话框 ========== -->
+    <el-dialog
+      v-model="reportLoadingVisible"
+      title=""
+      width="460px"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       :show-close="false"
-      class="report-progress-dialog"
+      class="report-loading-dialog"
     >
-      <div class="report-loading">
-        <el-icon class="is-loading" :size="48"><Loading /></el-icon>
-        <p>AI 正在分析您的任务数据，生成个性化报告...</p>
-        <p class="loading-tip">预计需要 30-60 秒，请耐心等待</p>
-        <div class="loading-progress">
-          <el-progress 
-            :percentage="reportProgress" 
-            :stroke-width="8"
-            :show-text="true"
-            :color="progressColor"
-          />
+      <div class="report-loading-body">
+        <div class="loading-spinner">
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring delay1"></div>
+          <div class="spinner-ring delay2"></div>
         </div>
-        <div class="loading-actions">
-          <el-button text type="info" @click="handleCancelGenerate" size="small">
-            后台生成，稍后查看
-          </el-button>
-        </div>
-      </div>
-    </el-dialog>
-
-    <!-- 报告内容对话框 -->
-    <el-dialog 
-      v-model="showReportContentDialog" 
-      :title="currentReportTitle" 
-      width="80%"
-      :close-on-click-modal="false"
-      destroy-on-close
-      class="report-dialog"
-    >
-      <div class="report-content" v-html="currentReportHtml"></div>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button type="primary" @click="handleExportCurrentReport" :icon="Download">
-            导出报告
-          </el-button>
-          <el-button @click="showReportContentDialog = false" :icon="Close">
-            关闭
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- 报告日志对话框 -->
-    <el-dialog 
-      v-model="showReportLogDialog" 
-      title="报告生成日志" 
-      width="700px"
-      class="report-log-dialog"
-    >
-      <div class="report-log-list">
-        <div v-if="reportLogs.length === 0" class="empty-logs">
-          <el-icon><Document /></el-icon>
-          <p>暂无报告记录</p>
-          <p class="empty-tip">点击"生成报告"开始创建您的第一份复盘报告</p>
-        </div>
-        <div v-else class="log-items">
-          <div 
-            v-for="log in reportLogs" 
-            :key="log.id" 
-            class="log-item"
-            :class="{
-              'log-pending': log.status === 'pending',
-              'log-success': log.status === 'success',
-              'log-failed': log.status === 'failed'
-            }"
-          >
-            <div class="log-header">
-              <div class="log-info">
-                <el-icon v-if="log.status === 'pending'" class="is-loading"><Loading /></el-icon>
-                <el-icon v-else-if="log.status === 'success'"><CircleCheck /></el-icon>
-                <el-icon v-else><CircleClose /></el-icon>
-                <span class="log-title">{{ log.title }}</span>
-              </div>
-              <div class="log-time">{{ log.createTime }}</div>
-            </div>
-            <div class="log-date-range">时间范围：{{ log.dateRange }}</div>
-            <div class="log-actions" v-if="log.status === 'success'">
-              <!-- 只保留导出按钮，移除查看按钮 -->
-              <el-button size="small" type="primary" @click="exportReportLog(log)">
-                <el-icon><Download /></el-icon>
-                导出报告
-              </el-button>
-              <el-button size="small" type="danger" @click="deleteReportLog(log)">
-                <el-icon><Delete /></el-icon>
-                删除
-              </el-button>
-            </div>
-            <div class="log-error" v-if="log.status === 'failed' && log.error">
-              <el-icon><Warning /></el-icon>
-              {{ log.error }}
-            </div>
+        <h3 class="loading-title">AI 正在生成复盘报告</h3>
+        <p class="loading-sub">正在分析您的任务数据，生成个性化洞察...</p>
+        <div class="loading-steps">
+          <div class="step" :class="{ active: loadingStep >= 1, done: loadingStep > 1 }">
+            <span class="step-icon">{{ loadingStep > 1 ? '✓' : '①' }}</span>
+            <span>收集任务数据</span>
+          </div>
+          <div class="step" :class="{ active: loadingStep >= 2, done: loadingStep > 2 }">
+            <span class="step-icon">{{ loadingStep > 2 ? '✓' : '②' }}</span>
+            <span>分析完成情况</span>
+          </div>
+          <div class="step" :class="{ active: loadingStep >= 3, done: loadingStep > 3 }">
+            <span class="step-icon">{{ loadingStep > 3 ? '✓' : '③' }}</span>
+            <span>生成报告内容</span>
+          </div>
+          <div class="step" :class="{ active: loadingStep >= 4 }">
+            <span class="step-icon">④</span>
+            <span>格式化输出</span>
           </div>
         </div>
+        <div class="loading-progress-bar">
+          <div class="progress-fill" :style="{ width: loadingProgress + '%' }"></div>
+        </div>
+        <p class="loading-hint">预计需要 30–60 秒，请耐心等待</p>
       </div>
+    </el-dialog>
+
+    <!-- ========== 报告展示对话框 ========== -->
+    <el-dialog
+      v-model="reportContentVisible"
+      :title="currentReportTitle"
+      width="860px"
+      top="4vh"
+      class="report-content-dialog"
+      destroy-on-close
+    >
+      <div class="report-viewer" ref="reportViewerRef">
+        <!-- 报告头部信息 -->
+        <div class="report-meta">
+          <div class="report-meta-item">
+            <span class="meta-label">📅 时间范围</span>
+            <span class="meta-value">{{ currentReportDateRange }}</span>
+          </div>
+          <div class="report-meta-item">
+            <span class="meta-label">👤 用户</span>
+            <span class="meta-value">{{ userStore.userName }}</span>
+          </div>
+          <div class="report-meta-item">
+            <span class="meta-label">🕐 生成时间</span>
+            <span class="meta-value">{{ currentReportGenTime }}</span>
+          </div>
+        </div>
+        <!-- Markdown 渲染区 -->
+        <div class="markdown-body" v-html="renderedMarkdown"></div>
+      </div>
+
       <template #footer>
-        <el-button @click="showReportLogDialog = false">关闭</el-button>
+        <div class="report-dialog-footer">
+          <el-button type="primary" @click="handleExportPdf" :loading="isExportingPdf">
+            <el-icon><Download /></el-icon>
+            {{ isExportingPdf ? '导出中...' : '导出 PDF' }}
+          </el-button>
+          <el-button @click="handleExportMarkdown">
+            <el-icon><Document /></el-icon>
+            导出 Markdown
+          </el-button>
+          <el-button @click="reportContentVisible = false">关闭</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useTaskStore } from '@/stores/task'
 import { useUserStore } from '@/stores/user'
 import * as echarts from 'echarts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { Refresh, List, ChatDotRound, Document, RefreshLeft, Download, Close, Tickets, Loading, CircleCheck, CircleClose, View, Delete, Warning } from '@element-plus/icons-vue'
+import {
+  Refresh, List, ChatDotRound, Document,
+  RefreshLeft, Download, Loading
+} from '@element-plus/icons-vue'
 import StatCard from '@/components/StatCard.vue'
-import { getTaskList, generateReport,generateReportAsync, getReportStatus, getReportLogs,deleteReportLog as deleteReportLogApi } from '@/api/task'
+import { getTaskList, generateReport } from '@/api/task'
 
 const router = useRouter()
 const taskStore = useTaskStore()
@@ -281,163 +252,417 @@ const categoryChart = ref(null)
 const priorityChart = ref(null)
 const loading = ref(false)
 
-// 报告相关状态
-const reportDialogVisible = ref(false)
-const showReportContentDialog = ref(false)
-const showReportLogDialog = ref(false)
+// ─── 报告相关状态 ────────────────────────────────────────────────
+const reportLoadingVisible = ref(false)   // 生成中 loading 弹窗
+const reportContentVisible = ref(false)   // 报告展示弹窗
 const isGenerating = ref(false)
-const currentReportId = ref(null)
+const isExportingPdf = ref(false)
+
 const currentReportTitle = ref('')
-const currentReportHtml = ref('')
-const currentRawReport = ref('')
-const reportProgress = ref(0)
-let progressInterval = null
-let pollingInterval = null
+const currentReportDateRange = ref('')
+const currentReportGenTime = ref('')
+const currentMarkdown = ref('')           // 原始 markdown
+const renderedMarkdown = ref('')          // 渲染后 HTML
 
-// 报告日志列表
-const reportLogs = ref([])
+const reportViewerRef = ref(null)
 
-// 待处理报告数量
-const pendingReportsCount = computed(() => {
-  return reportLogs.value.filter(log => log.status === 'pending').length
-})
+// 生成中动画进度
+const loadingStep = ref(1)
+const loadingProgress = ref(0)
+let loadingTimer = null
 
-// 进度条颜色
-const progressColor = computed(() => {
-  if (reportProgress.value < 30) return '#409EFF'
-  if (reportProgress.value < 70) return '#E6A23C'
-  return '#67C23A'
-})
-
-// 时间维度筛选：week-本周, month-当月, custom-自定义
+// ─── 时间维度筛选 ─────────────────────────────────────────────────
 const timeDimension = ref('week')
-// 自定义日期范围
 const customDateRange = ref([])
 
 let trendChartInstance = null
 let categoryChartInstance = null
 let priorityChartInstance = null
 
-// 根据时间维度过滤任务
+// ─── 计算属性 ─────────────────────────────────────────────────────
 const filteredTasks = computed(() => {
   const now = new Date()
   let startDate, endDate
 
-  if (timeDimension.value === 'all') {
-    // 全部：返回所有任务，不进行时间过滤
-    return taskStore.tasks
-  } else if (timeDimension.value === 'week') {
-    // 本周：周一至周日
-    const day = now.getDay() || 7 // 周日转为7
-    startDate = new Date(now)
-    startDate.setDate(now.getDate() - day + 1) // 周一
-    startDate.setHours(0, 0, 0, 0)
-    
-    endDate = new Date(now)
-    endDate.setDate(now.getDate() + (7 - day)) // 周日
-    endDate.setHours(23, 59, 59, 999)
+  if (timeDimension.value === 'week') {
+    const day = now.getDay() || 7
+    startDate = new Date(now); startDate.setDate(now.getDate() - day + 1); startDate.setHours(0,0,0,0)
+    endDate = new Date(now); endDate.setDate(now.getDate() + (7 - day)); endDate.setHours(23,59,59,999)
   } else if (timeDimension.value === 'month') {
-    // 当月：1日至月底
-    startDate = new Date(now.getFullYear(), now.getMonth(), 1)
-    startDate.setHours(0, 0, 0, 0)
-    
-    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    endDate.setHours(23, 59, 59, 999)
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1); startDate.setHours(0,0,0,0)
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); endDate.setHours(23,59,59,999)
   } else if (timeDimension.value === 'custom') {
-    // 自定义日期范围
     if (customDateRange.value && customDateRange.value.length === 2) {
-      startDate = new Date(customDateRange.value[0])
-      startDate.setHours(0, 0, 0, 0)
-      
-      endDate = new Date(customDateRange.value[1])
-      endDate.setHours(23, 59, 59, 999)
-    } else {
-      return []
-    }
+      startDate = new Date(customDateRange.value[0]); startDate.setHours(0,0,0,0)
+      endDate = new Date(customDateRange.value[1]); endDate.setHours(23,59,59,999)
+    } else { return [] }
   }
 
   return taskStore.tasks.filter(task => {
-    const taskDate = new Date(task.createdAt)
-    return taskDate >= startDate && taskDate <= endDate
+    const d = new Date(task.createdAt)
+    return d >= startDate && d <= endDate
   })
 })
 
-const hasCustomDateRange = computed(() => {
-  return Array.isArray(customDateRange.value) && customDateRange.value.length === 2
-    && !!customDateRange.value[0] && !!customDateRange.value[1]
-})
+const hasCustomDateRange = computed(() =>
+  Array.isArray(customDateRange.value) && customDateRange.value.length === 2
+  && !!customDateRange.value[0] && !!customDateRange.value[1]
+)
 
-
-function handleResetCustomDate() {
-  customDateRange.value = []
-  refreshCharts()
-  ElMessage.success('筛选条件已重置')
-}
-
-
-
-// 计算过滤后的任务统计
 const filteredStats = computed(() => {
   const tasks = filteredTasks.value
   const completed = tasks.filter(t => t.status === '已完成').length
   const expired = tasks.filter(t => t.status === '已过期').length
-  const total = tasks.length
-  return {
-    total: total,
-    completed: completed,
-    expired: expired,
-    pending: total - completed - expired  // 待办数 = 总任务 - 已完成 - 已过期
-  }
+  return { total: tasks.length, completed, expired, pending: tasks.length - completed - expired }
 })
 
-// 计算完成率：已完成 / 总任务数 × 100%
 const completionRate = computed(() => {
-  const total = filteredStats.value.total
-  const completed = filteredStats.value.completed
-  if (total === 0) return 0
-  return Math.round((completed / total) * 100)
+  const { total, completed } = filteredStats.value
+  return total === 0 ? 0 : Math.round((completed / total) * 100)
 })
 
-// 计算准时完成率
 const onTimeCompletionRate = computed(() => {
   const tasks = filteredTasks.value
   const completedOnTime = tasks.filter(task => {
     if (task.status !== '已完成' || !task.deadline || !task.completedAt) return false
-    const completedAt = new Date(task.completedAt)
-    const deadline = new Date(task.deadline)
-    return completedAt <= deadline  // ✅ 完成时间 <= 截止时间 = 准时完成
+    return new Date(task.completedAt) <= new Date(task.deadline)
   }).length
-
   const totalCompleted = filteredStats.value.completed
-  if (totalCompleted === 0) return 0
-  return Math.round((completedOnTime / totalCompleted) * 100)
+  return totalCompleted === 0 ? 0 : Math.round((completedOnTime / totalCompleted) * 100)
 })
 
-// 计算逾期率
 const overdueRate = computed(() => {
-  const total = filteredStats.value.total
-  const expired = filteredStats.value.expired
-  if (total === 0) return 0
-  return Math.round((expired / total) * 100)
+  const { total, expired } = filteredStats.value
+  return total === 0 ? 0 : Math.round((expired / total) * 100)
 })
 
+// ─── Loading 步骤动画 ─────────────────────────────────────────────
+function startLoadingAnimation() {
+  loadingStep.value = 1
+  loadingProgress.value = 0
+  if (loadingTimer) clearInterval(loadingTimer)
 
-console.log('📊 [Statistics] 组件初始化')
+  const stages = [
+    { step: 1, progress: 20, delay: 1500 },
+    { step: 2, progress: 45, delay: 3000 },
+    { step: 3, progress: 70, delay: 5000 },
+    { step: 4, progress: 88, delay: 8000 },
+  ]
+  let stageIdx = 0
 
-// 从API加载任务数据
+  loadingTimer = setInterval(() => {
+    if (stageIdx < stages.length) {
+      loadingStep.value = stages[stageIdx].step
+      loadingProgress.value = stages[stageIdx].progress
+      stageIdx++
+    }
+  }, 4000)
+}
+
+function stopLoadingAnimation(success = true) {
+  if (loadingTimer) { clearInterval(loadingTimer); loadingTimer = null }
+  if (success) {
+    loadingStep.value = 4
+    loadingProgress.value = 100
+  }
+}
+
+// ─── Markdown 解析 ────────────────────────────────────────────────
+/**
+ * 将 Markdown 文本转换为 HTML
+ * 支持：标题(h1-h6)、粗体、斜体、代码块、行内代码、列表、表格、引用、分隔线、链接
+ */
+function parseMarkdown(md) {
+  if (!md) return ''
+  let html = md
+
+  // 代码块（先处理，避免内部被其他规则影响）
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    return `<pre class="code-block"><code class="lang-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`
+  })
+
+  // 行内代码
+  html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+
+  // 标题
+  html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>')
+  html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>')
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+
+  // 分隔线
+  html = html.replace(/^(---|\*\*\*|___)\s*$/gm, '<hr class="md-hr" />')
+
+  // 引用
+  html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+
+  // 粗体+斜体
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+
+  // 表格
+  html = html.replace(/(\|.+\|\n)((?:\|[-: ]+\|\n))((?:\|.+\|\n?)*)/g, (match, header, separator, rows) => {
+    const parseRow = (row, tag = 'td') => {
+      const cells = row.trim().replace(/^\||\|$/g, '').split('|')
+      return '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>'
+    }
+    const headerHtml = parseRow(header, 'th')
+    const rowsHtml = rows.trim().split('\n').filter(Boolean).map(r => parseRow(r)).join('')
+    return `<table class="md-table"><thead>${headerHtml}</thead><tbody>${rowsHtml}</tbody></table>`
+  })
+
+  // 有序列表
+  html = html.replace(/((?:^\d+\. .+\n?)+)/gm, match => {
+    const items = match.trim().split('\n').map(line => {
+      return '<li>' + line.replace(/^\d+\. /, '') + '</li>'
+    }).join('')
+    return `<ol>${items}</ol>`
+  })
+
+  // 无序列表
+  html = html.replace(/((?:^[-*+] .+\n?)+)/gm, match => {
+    const items = match.trim().split('\n').map(line => {
+      return '<li>' + line.replace(/^[-*+] /, '') + '</li>'
+    }).join('')
+    return `<ul>${items}</ul>`
+  })
+
+  // 链接
+  html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>')
+
+  // 段落（空行隔开的文本块，不处理已有块级元素行）
+  html = html.replace(/\n\n(?!<)/g, '</p><p>')
+  html = '<p>' + html + '</p>'
+
+  // 清理：段落内的单个换行变 <br>（在块级元素外）
+  html = html.replace(/(?<!>)\n(?!<)/g, '<br>')
+
+  // 清理空段落
+  html = html.replace(/<p>\s*<\/p>/g, '')
+  html = html.replace(/<p>(<(?:h[1-6]|ul|ol|pre|table|blockquote|hr)[^>]*>)/g, '$1')
+  html = html.replace(/(<\/(?:h[1-6]|ul|ol|pre|table|blockquote|hr)>)<\/p>/g, '$1')
+
+  return html
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// ─── 生成报告（同步） ─────────────────────────────────────────────
+async function handleGenerateReport() {
+  if (isGenerating.value) {
+    ElMessage.warning('报告正在生成中，请稍候...')
+    return
+  }
+
+  const { startDate, endDate } = getCurrentDateRange()
+  const title = `复盘报告 ${startDate} ~ ${endDate}`
+
+  isGenerating.value = true
+  reportLoadingVisible.value = true
+  startLoadingAnimation()
+
+  try {
+    console.log('📄 [Statistics] 同步生成报告:', startDate, '~', endDate)
+
+    const result = await generateReport({
+      user_id: userStore.userId,
+      start_date: startDate,
+      end_date: endDate,
+      title
+    })
+
+    stopLoadingAnimation(true)
+
+    // 短暂停留让进度条跑满
+    await new Promise(resolve => setTimeout(resolve, 400))
+    reportLoadingVisible.value = false
+
+    if (!result || !result.content) {
+      ElMessage.error('报告内容为空，请稍后重试')
+      return
+    }
+
+    // 解析 Markdown
+    currentMarkdown.value = result.content
+    renderedMarkdown.value = parseMarkdown(result.content)
+    currentReportTitle.value = title
+    currentReportDateRange.value = `${startDate} 至 ${endDate}`
+    currentReportGenTime.value = new Date().toLocaleString('zh-CN')
+
+    reportContentVisible.value = true
+    ElMessage.success('报告生成成功！')
+
+  } catch (error) {
+    console.error('❌ [Statistics] 生成报告失败:', error)
+    stopLoadingAnimation(false)
+    reportLoadingVisible.value = false
+    ElMessage.error('生成报告失败：' + error.message)
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// ─── 导出 PDF ─────────────────────────────────────────────────────
+async function handleExportPdf() {
+  isExportingPdf.value = true
+  try {
+    // 用浏览器打印功能实现 PDF 导出
+    await nextTick()
+
+    // 创建一个隐藏的打印窗口
+    const printWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!printWindow) {
+      ElMessage.error('无法打开打印窗口，请检查浏览器弹窗设置')
+      return
+    }
+
+    const reportHtml = reportViewerRef.value?.innerHTML || renderedMarkdown.value
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>${currentReportTitle.value}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #1a1a2e;
+      padding: 40px 60px;
+      background: #fff;
+    }
+    /* 报告 meta */
+    .report-meta {
+      display: flex;
+      gap: 32px;
+      padding: 16px 20px;
+      background: #f0f4ff;
+      border-radius: 8px;
+      margin-bottom: 32px;
+      border-left: 4px solid #4a6cf7;
+    }
+    .report-meta-item { display: flex; flex-direction: column; gap: 4px; }
+    .meta-label { font-size: 11px; color: #6b7280; font-weight: 500; }
+    .meta-value { font-size: 13px; color: #1a1a2e; font-weight: 600; }
+
+    /* Markdown 样式 */
+    .markdown-body h1 {
+      font-size: 24px; font-weight: 700; color: #1a1a2e;
+      border-bottom: 2px solid #4a6cf7; padding-bottom: 10px; margin: 28px 0 16px;
+    }
+    .markdown-body h2 {
+      font-size: 20px; font-weight: 700; color: #1a1a2e;
+      border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin: 24px 0 12px;
+    }
+    .markdown-body h3 { font-size: 17px; font-weight: 600; color: #374151; margin: 20px 0 10px; }
+    .markdown-body h4 { font-size: 15px; font-weight: 600; color: #4b5563; margin: 16px 0 8px; }
+    .markdown-body p { margin: 10px 0; }
+    .markdown-body strong { font-weight: 700; color: #1a1a2e; }
+    .markdown-body em { font-style: italic; }
+    .markdown-body ul, .markdown-body ol { padding-left: 24px; margin: 10px 0; }
+    .markdown-body li { margin: 5px 0; }
+    .markdown-body blockquote {
+      border-left: 3px solid #4a6cf7; padding: 10px 16px;
+      margin: 16px 0; color: #6b7280; background: #f8faff; border-radius: 0 6px 6px 0;
+    }
+    .markdown-body .md-table {
+      width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;
+    }
+    .markdown-body .md-table th {
+      background: #4a6cf7; color: #fff; padding: 10px 14px; text-align: left; font-weight: 600;
+    }
+    .markdown-body .md-table td {
+      padding: 9px 14px; border-bottom: 1px solid #e2e8f0; color: #374151;
+    }
+    .markdown-body .md-table tr:nth-child(even) td { background: #f8faff; }
+    .markdown-body .code-block {
+      background: #1e1e2e; color: #cdd6f4; padding: 16px; border-radius: 8px;
+      font-family: 'Courier New', monospace; font-size: 13px;
+      overflow-x: auto; margin: 14px 0;
+    }
+    .markdown-body .inline-code {
+      background: #f0f4ff; color: #4a6cf7; padding: 2px 6px; border-radius: 4px;
+      font-family: 'Courier New', monospace; font-size: 13px;
+    }
+    .markdown-body .md-hr {
+      border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;
+    }
+    a { color: #4a6cf7; text-decoration: none; }
+    @media print {
+      body { padding: 20px 40px; }
+      @page { margin: 1cm; size: A4; }
+    }
+  </style>
+</head>
+<body>
+  ${reportHtml}
+  <script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`)
+    printWindow.document.close()
+
+    ElMessage.success('PDF 导出窗口已打开，请在打印对话框中选择"另存为 PDF"')
+  } catch (error) {
+    console.error('导出 PDF 失败:', error)
+    ElMessage.error('导出 PDF 失败：' + error.message)
+  } finally {
+    isExportingPdf.value = false
+  }
+}
+
+// ─── 导出 Markdown ────────────────────────────────────────────────
+function handleExportMarkdown() {
+  if (!currentMarkdown.value) { ElMessage.warning('没有可导出的报告内容'); return }
+  const blob = new Blob([currentMarkdown.value], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${currentReportTitle.value}.md`
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+  ElMessage.success('Markdown 导出成功')
+}
+
+// ─── 日期范围工具 ─────────────────────────────────────────────────
+function getCurrentDateRange() {
+  const now = new Date()
+  let startDate, endDate
+
+  if (timeDimension.value === 'week') {
+    const day = now.getDay() || 7
+    const s = new Date(now); s.setDate(now.getDate() - day + 1); s.setHours(0,0,0,0)
+    const e = new Date(now); e.setDate(now.getDate() + (7 - day)); e.setHours(23,59,59,999)
+    startDate = s; endDate = e
+  } else if (timeDimension.value === 'month') {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    endDate = new Date(now)
+  } else if (timeDimension.value === 'custom' && customDateRange.value.length === 2) {
+    startDate = new Date(customDateRange.value[0])
+    endDate = new Date(customDateRange.value[1])
+  } else {
+    startDate = new Date(now); startDate.setDate(now.getDate() - 6)
+    endDate = new Date(now)
+  }
+
+  const fmt = d => {
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0')
+    return `${y}-${m}-${dd}`
+  }
+  return { startDate: fmt(startDate), endDate: fmt(endDate) }
+}
+
+// ─── API 数据加载 ─────────────────────────────────────────────────
 async function loadTasksFromAPI() {
   loading.value = true
   try {
-    console.log('🔄 [Statistics] 开始从API加载任务数据')
-    console.log('👤 [Statistics] 当前用户ID:', userStore.userId)
-    console.log('👤 [Statistics] userStore.isLoggedIn:', userStore.isLoggedIn)
-    
     const tasksData = await getTaskList({}, userStore.userId)
-    
-    console.log('✅ [Statistics] API返回任务数量:', tasksData.length)
-    console.log('📦 [Statistics] API任务数据:', tasksData)
-    
-    // 将API数据转换为taskStore格式
     const formattedTasks = tasksData.map(task => ({
       id: String(task.id),
       title: task.task_content,
@@ -450,740 +675,148 @@ async function loadTasksFromAPI() {
       updatedAt: task.updated_at || task.created_at || new Date().toISOString(),
       completedAt: task.completed_at || null
     }))
-    
-    console.log('✨ [Statistics] 格式化后任务数量:', formattedTasks.length)
-    
-    // 更新taskStore中的任务数据
     taskStore.tasks = formattedTasks
-    
-    console.log('🎯 [Statistics] taskStore已更新，当前任务数量:', taskStore.tasks.length)
-    
     return formattedTasks
-    
   } catch (error) {
-    console.error('❌ [Statistics] 从API加载任务失败:', error)
-    console.error('❌ [Statistics] 错误详情:', error.message)
-    
     ElMessage.error('加载任务数据失败：' + error.message)
     return []
   } finally {
     loading.value = false
   }
 }
-// 启动进度动画
-function startProgressAnimation() {
-  reportProgress.value = 0
-  if (progressInterval) clearInterval(progressInterval)
-  
-  progressInterval = setInterval(() => {
-    if (reportProgress.value < 90) {
-      const increment = reportProgress.value < 30 ? 10 : (reportProgress.value < 60 ? 5 : 2)
-      reportProgress.value = Math.min(reportProgress.value + increment, 90)
-    }
-  }, 3000)
-}
 
-// 停止进度动画
-function stopProgressAnimation() {
-  if (progressInterval) {
-    clearInterval(progressInterval)
-    progressInterval = null
-  }
-  reportProgress.value = 100
-  setTimeout(() => {
-    reportProgress.value = 0
-  }, 500)
-}
-
-// Statistics.vue - 修改轮询函数，传入 userId
-function startPolling(reportId) {
-  if (pollingInterval) clearInterval(pollingInterval)
-  
-  pollingInterval = setInterval(async () => {
-    try {
-      // 传入 userId
-      const result = await getReportStatus(reportId, userStore.userId)
-      
-      if (result.status === 'success') {
-        clearInterval(pollingInterval)
-        pollingInterval = null
-        stopProgressAnimation()
-        isGenerating.value = false
-        reportDialogVisible.value = false
-        
-        // 刷新日志列表
-        await loadReportLogs()
-        
-        ElMessage.success('报告生成成功！')
-        
-      } else if (result.status === 'failed') {
-        clearInterval(pollingInterval)
-        pollingInterval = null
-        stopProgressAnimation()
-        isGenerating.value = false
-        reportDialogVisible.value = false
-        
-        ElMessage.error('报告生成失败：' + (result.error || '未知错误'))
-      }
-    } catch (error) {
-      console.error('轮询报告状态失败:', error)
-    }
-  }, 3000)
-}
-
-// 加载报告日志
-async function loadReportLogs() {
-  try {
-    const logs = await getReportLogs(userStore.userId)
-    reportLogs.value = logs
-  } catch (error) {
-    console.error('加载报告日志失败:', error)
-  }
-}
-
-// 生成报告处理（异步模式）
-async function handleGenerateReport() {
-  if (isGenerating.value) {
-    ElMessage.warning('已有报告正在生成中，请稍后再试')
-    return
-  }
-  
-  isGenerating.value = true
-  reportDialogVisible.value = true
-  startProgressAnimation()
-  
-  try {
-    console.log('📄 [Statistics] 开始异步生成报告')
-    
-    const { startDate, endDate } = getCurrentDateRange()
-    const dateRangeText = `${startDate} 至 ${endDate}`
-    const title = `复盘报告_${startDate}_${endDate}`
-    
-    console.log('📅 [Statistics] 报告时间范围:', startDate, '至', endDate)
-    
-    // 调用异步生成API
-    const response = await generateReportAsync({
-      user_id: userStore.userId,
-      start_date: startDate,
-      end_date: endDate,
-      title: title
-    })
-    
-    currentReportId.value = response.report_id
-    
-    // 添加到日志列表
-    const newLog = {
-      id: response.report_id,
-      title: title,
-      dateRange: dateRangeText,
-      createTime: new Date().toLocaleString('zh-CN'),
-      status: 'pending',
-      content: null,
-      error: null
-    }
-    reportLogs.value.unshift(newLog)
-    
-    // 开始轮询
-    startPolling(response.report_id)
-    
-  } catch (error) {
-    console.error('❌ [Statistics] 生成报告失败:', error)
-    ElMessage.error('生成报告失败：' + error.message)
-    reportDialogVisible.value = false
-    isGenerating.value = false
-    stopProgressAnimation()
-  }
-}
-
-// 取消生成（后台继续）
-function handleCancelGenerate() {
-  reportDialogVisible.value = false
-  ElMessage.info('报告正在后台生成，可在"报告日志"中查看结果')
-}
-
-// 获取当前筛选的日期范围
-function getCurrentDateRange() {
-  const now = new Date()
-  let startDate, endDate
-  
-  if (timeDimension.value === 'week') {
-    const day = now.getDay() || 7
-    startDate = new Date(now)
-    startDate.setDate(now.getDate() - day + 1)
-    startDate.setHours(0, 0, 0, 0)
-    
-    endDate = new Date(now)
-    endDate.setDate(now.getDate() + (7 - day))
-    endDate.setHours(23, 59, 59, 999)
-    
-  } else if (timeDimension.value === 'month') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), 1)
-    startDate.setHours(0, 0, 0, 0)
-    
-    endDate = new Date(now)
-    endDate.setHours(23, 59, 59, 999)
-    
-  } else if (timeDimension.value === 'custom' && customDateRange.value.length === 2) {
-    startDate = new Date(customDateRange.value[0])
-    startDate.setHours(0, 0, 0, 0)
-    
-    endDate = new Date(customDateRange.value[1])
-    endDate.setHours(23, 59, 59, 999)
-    
-  } else {
-    startDate = new Date(now)
-    startDate.setDate(now.getDate() - 6)
-    startDate.setHours(0, 0, 0, 0)
-    
-    endDate = new Date(now)
-    endDate.setHours(23, 59, 59, 999)
-  }
-  
-  const formatDate = (date) => {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
-  
-  return {
-    startDate: formatDate(startDate),
-    endDate: formatDate(endDate)
-  }
-}
-
-// 查看报告
-function viewReport(log) {
-  if (log.content) {
-    currentReportTitle.value = log.title
-    currentRawReport.value = log.content
-    formatReportContent(log.content)
-    showReportContentDialog.value = true
-  } else {
-    ElMessage.warning('报告内容不存在')
-  }
-}
-
-// 格式化报告内容
-function formatReportContent(markdown) {
-  let html = markdown
-    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-    .replace(/\|(.+)\|/g, (match) => {
-      const cells = match.split('|').filter(cell => cell.trim())
-      if (cells.some(cell => cell.includes('---'))) {
-        return ''
-      }
-      const cellHtml = cells.map(cell => `<td>${cell.trim()}</td>`).join('')
-      return `<tr>${cellHtml}</tr>`
-    })
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^\- (.*$)/gim, '<li>$1</li>')
-    .replace(/^\d+\. (.*$)/gim, '<li>$1</li>')
-    .replace(/\n/g, '<br>')
-  
-  html = html.replace(/(<tr>[\s\S]*?<\/tr>)/g, '<table>$1</table>')
-  html = html.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
-  
-  currentReportHtml.value = html
-}
-
-// 导出当前报告
-function handleExportCurrentReport() {
-  if (!currentRawReport.value) {
-    ElMessage.warning('没有可导出的报告内容')
-    return
-  }
-  
-  try {
-    const blob = new Blob([currentRawReport.value], { type: 'text/markdown;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${currentReportTitle.value}.md`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    
-    ElMessage.success('报告导出成功')
-  } catch (error) {
-    console.error('❌ [Statistics] 导出报告失败:', error)
-    ElMessage.error('导出报告失败：' + error.message)
-  }
-}
-
-// 导出报告（直接从工作流重新生成）
-async function exportReportLog(log) {
-  const loading = ElMessage.loading('正在生成报告内容...', { duration: 0 })
-  
-  try {
-    // 重新调用工作流生成报告内容
-    const reportContent = await generateReport({
-      user_id: userStore.userId,
-      start_date: log.startDate,
-      end_date: log.endDate
-    })
-    
-    if (reportContent) {
-      const blob = new Blob([reportContent], { type: 'text/markdown;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${log.title}.md`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      
-      ElMessage.success('报告导出成功')
-    } else {
-      ElMessage.error('报告内容为空')
-    }
-  } catch (error) {
-    console.error('导出报告失败:', error)
-    ElMessage.error('导出失败：' + error.message)
-  } finally {
-    loading.close()
-  }
-}
-
-// 删除报告日志
-async function deleteReportLog(log) {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除报告"${log.title}"吗？`,
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-    
-    await deleteReportLogApi(log.id, userStore.userId)
-    reportLogs.value = reportLogs.value.filter(l => l.id !== log.id)
-    ElMessage.success('删除成功')
-    
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除失败:', error)
-      ElMessage.error('删除失败')
-    }
-  }
-}
-
-// 初始化完成率趋势与任务增长率混合图
+// ─── 图表 ─────────────────────────────────────────────────────────
 function initTrendChart() {
   if (!trendChart.value) return
-
-  if (trendChartInstance) {
-    trendChartInstance.dispose()
-  }
-
+  if (trendChartInstance) trendChartInstance.dispose()
   trendChartInstance = echarts.init(trendChart.value)
 
-   const now = new Date()
-  const dates = []
-  const completionRates = []
-  const newTaskCounts = []
-
-  // ✅ 根据时间维度，生成起止日期列表
+  const now = new Date()
+  const dates = [], completionRates = [], newTaskCounts = []
   let dateList = []
 
   if (timeDimension.value === 'week') {
-    // 本周：从周一到周日
     const day = now.getDay() || 7
-    for (let i = -(day - 1); i <= (7 - day); i++) {
-      const d = new Date(now)
-      d.setDate(now.getDate() + i)
-      dateList.push(d)
+    for (let i = -(day-1); i <= (7-day); i++) {
+      const d = new Date(now); d.setDate(now.getDate()+i); dateList.push(d)
     }
   } else if (timeDimension.value === 'month') {
-    // ✅ 当月：从1号到今天（不是往前推N天！）
-    const year = now.getFullYear()
-    const month = now.getMonth()
-    const today = now.getDate()
-    for (let d = 1; d <= today; d++) {
-      dateList.push(new Date(year, month, d))
-    }
-  } else if (timeDimension.value === 'custom') {
-    // 自定义：从 startDate 到 endDate
-    if (customDateRange.value && customDateRange.value.length === 2) {
-      const start = new Date(customDateRange.value[0])
-      const end = new Date(customDateRange.value[1])
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        dateList.push(new Date(d))
-      }
-    }
+    const y = now.getFullYear(), mo = now.getMonth(), td = now.getDate()
+    for (let d = 1; d <= td; d++) dateList.push(new Date(y, mo, d))
+  } else if (timeDimension.value === 'custom' && customDateRange.value?.length === 2) {
+    const s = new Date(customDateRange.value[0]), e = new Date(customDateRange.value[1])
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate()+1)) dateList.push(new Date(d))
   }
 
-  // 遍历日期列表，计算每天的数据
   dateList.forEach(date => {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const dateStr = `${year}-${month}-${day}`
-    const displayDate = `${month}-${day}`
-    dates.push(displayDate)
+    const y = date.getFullYear(), m = String(date.getMonth()+1).padStart(2,'0'), d = String(date.getDate()).padStart(2,'0')
+    const dateStr = `${y}-${m}-${d}`
+    dates.push(`${m}-${d}`)
 
-    // 累计完成率（截止当天）
-    const tasksUpToDate = filteredTasks.value.filter(task => {
-      const taskDate = new Date(task.createdAt)
-      const ty = taskDate.getFullYear()
-      const tm = String(taskDate.getMonth() + 1).padStart(2, '0')
-      const td = String(taskDate.getDate()).padStart(2, '0')
-      return `${ty}-${tm}-${td}` <= dateStr
+    const up = filteredTasks.value.filter(t => {
+      const td2 = new Date(t.createdAt)
+      return `${td2.getFullYear()}-${String(td2.getMonth()+1).padStart(2,'0')}-${String(td2.getDate()).padStart(2,'0')}` <= dateStr
     })
-    const completedUpToDate = tasksUpToDate.filter(t => t.status === '已完成')
-    const rate = tasksUpToDate.length > 0
-      ? Math.round((completedUpToDate.length / tasksUpToDate.length) * 100)
-      : 0
-    completionRates.push(rate)
+    const comp = up.filter(t => t.status === '已完成')
+    completionRates.push(up.length > 0 ? Math.round((comp.length/up.length)*100) : 0)
 
-    // 当天新增任务数
-    const count = filteredTasks.value.filter(task => {
-      const taskDate = new Date(task.createdAt)
-      const ty = taskDate.getFullYear()
-      const tm = String(taskDate.getMonth() + 1).padStart(2, '0')
-      const td = String(taskDate.getDate()).padStart(2, '0')
-      return `${ty}-${tm}-${td}` === dateStr
+    const cnt = filteredTasks.value.filter(t => {
+      const td2 = new Date(t.createdAt)
+      return `${td2.getFullYear()}-${String(td2.getMonth()+1).padStart(2,'0')}-${String(td2.getDate()).padStart(2,'0')}` === dateStr
     }).length
-    newTaskCounts.push(count)
+    newTaskCounts.push(cnt)
   })
 
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      formatter: function(params) {
-        let result = `<div style="padding: 8px;"><strong>${params[0].axisValue}</strong></div>`
-        params.forEach(param => {
-          const marker = param.marker
-          const seriesName = param.seriesName
-          const value = param.value
-          if (seriesName === '完成率') {
-            result += `<div style="margin-top: 6px;">${marker} ${seriesName}: ${value}%</div>`
-          } else {
-            result += `<div style="margin-top: 6px;">${marker} ${seriesName}: ${value}个</div>`
-          }
-        })
-        return result
-      }
-    },
-    legend: {
-      data: ['完成率', '任务增长率'],
-      top: 0
-    },
-    xAxis: {
-      type: 'category',
-      data: dates
-    },
+  trendChartInstance.setOption({
+    tooltip: { trigger: 'axis', formatter: params => {
+      let r = `<strong>${params[0].axisValue}</strong>`
+      params.forEach(p => { r += `<div>${p.marker} ${p.seriesName}: ${p.value}${p.seriesName==='完成率'?'%':'个'}</div>` })
+      return r
+    }},
+    legend: { data: ['完成率', '任务增长率'], top: 0 },
+    xAxis: { type: 'category', data: dates },
     yAxis: [
-      {
-        type: 'value',
-        name: '完成率 (%)',
-        min: 0,
-        max: 100,
-        position: 'left',
-        axisLabel: {
-          formatter: '{value}%'
-        },
-        axisLine: {
-          show: true,
-          lineStyle: {
-            color: '#409EFF'
-          }
-        }
-      },
-      {
-        type: 'value',
-        name: '任务数 (个)',
-        min: 0,
-        position: 'right',
-        axisLabel: {
-          formatter: '{value}'
-        },
-        axisLine: {
-          show: true,
-          lineStyle: {
-            color: '#67C23A'
-          }
-        }
-      }
+      { type: 'value', name: '完成率(%)', min: 0, max: 100, position: 'left', axisLabel: { formatter: '{value}%' }, axisLine: { show: true, lineStyle: { color: '#409EFF' } } },
+      { type: 'value', name: '任务数(个)', min: 0, position: 'right', axisLine: { show: true, lineStyle: { color: '#67C23A' } } }
     ],
     series: [
-      {
-        name: '完成率',
-        type: 'line',
-        yAxisIndex: 0,
-        data: completionRates,
-        smooth: true,
-        itemStyle: {
-          color: '#409EFF'
-        },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
-            { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-          ])
-        }
-      },
-      {
-        name: '任务增长率',
-        type: 'bar',
-        yAxisIndex: 1,
-        data: newTaskCounts,
-        itemStyle: {
-          color: '#67C23A'
-        }
-      }
+      { name: '完成率', type: 'line', yAxisIndex: 0, data: completionRates, smooth: true, itemStyle: { color: '#409EFF' }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(64,158,255,.3)'},{offset:1,color:'rgba(64,158,255,.05)'}]) } },
+      { name: '任务增长率', type: 'bar', yAxisIndex: 1, data: newTaskCounts, itemStyle: { color: '#67C23A' } }
     ]
-  }
-
-  trendChartInstance.setOption(option)
+  })
 }
 
-// 初始化任务分类统计图
 function initCategoryChart() {
   if (!categoryChart.value) return
-
-  if (categoryChartInstance) {
-    categoryChartInstance.dispose()
-  }
-
+  if (categoryChartInstance) categoryChartInstance.dispose()
   categoryChartInstance = echarts.init(categoryChart.value)
 
-  // 使用过滤后的任务数据统计分类
   const categories = {}
-  filteredTasks.value.forEach(task => {
-    const category = task.category || '其他'
-    categories[category] = (categories[category] || 0) + 1
+  filteredTasks.value.forEach(t => { const c = t.category || '其他'; categories[c] = (categories[c]||0)+1 })
+  const data = Object.keys(categories).map(k => ({ name: k, value: categories[k] }))
+
+  categoryChartInstance.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c}个 ({d}%)' },
+    legend: { orient: 'vertical', left: 'left' },
+    series: [{ type: 'pie', radius: ['40%','70%'], data, label: { formatter: '{b}\n{d}%', fontSize: 12 }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,.5)' } } }]
   })
-
-  const data = Object.keys(categories).map(key => ({
-    name: key,
-    value: categories[key]
-  }))
-
-  // 计算每个分类的百分比
-  const total = taskStore.tasks.length || 0
-  const dataWithPercentage = data.map(item => ({
-    name: item.name,
-    value: item.value,
-    percentage: total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'
-  }))
-
-  const option = {
-    tooltip: {
-      trigger: 'item',
-      formatter: '{b}: {c}个 ({d}%)'
-    },
-    legend: {
-      orient: 'vertical',
-      left: 'left',
-      formatter: function(name) {
-        const item = dataWithPercentage.find(d => d.name === name)
-        return item ? `${name} ${item.percentage}%` : name
-      }
-    },
-    series: [{
-      type: 'pie',
-      radius: ['40%', '70%'],
-      data: data,
-      label: {
-        formatter: '{b}\n{d}%',
-        fontSize: 12
-      },
-      emphasis: {
-        itemStyle: {
-          shadowBlur: 10,
-          shadowOffsetX: 0,
-          shadowColor: 'rgba(0, 0, 0, 0.5)'
-        }
-      }
-    }]
-  }
-
-  categoryChartInstance.setOption(option)
 }
 
-// 初始化优先级分布图
 function initPriorityChart() {
   if (!priorityChart.value) return
-
-  if (priorityChartInstance) {
-    priorityChartInstance.dispose()
-  }
-
+  if (priorityChartInstance) priorityChartInstance.dispose()
   priorityChartInstance = echarts.init(priorityChart.value)
 
-  // 使用过滤后的任务数据统计优先级
-  const priorities = ['高', '中', '低']
+  const priorities = ['高','中','低']
   const total = filteredTasks.value.length || 0
-
-  const data = priorities.map(priority => {
-    const count = filteredTasks.value.filter(task => task.importance === priority).length
-    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0'
-    return {
-      name: priority,
-      value: count,
-      percentage: percentage
-    }
+  const data = priorities.map(p => {
+    const cnt = filteredTasks.value.filter(t => t.importance === p).length
+    return { name: p, value: cnt, percentage: total > 0 ? ((cnt/total)*100).toFixed(1) : '0.0' }
   })
 
-  // 使用百分比作为 Y 轴的最大值
-  const maxPercentage = 100
-
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'shadow'
-      },
-      formatter: function(params) {
-        const item = data.find(d => d.name === params[0].name)
-        return `${params[0].name}优先级<br/>任务数: ${item.value}个<br/>占比: ${item.percentage}%`
-      }
-    },
-    xAxis: {
-      type: 'category',
-      data: priorities
-    },
-    yAxis: {
-      type: 'value',
-      max: maxPercentage,
-      min: 0,
-      axisLabel: {
-        formatter: '{value}%'
-      }
-    },
-    series: [
-      {
-        data: data.map(item => parseFloat(item.percentage)),
-        type: 'bar',
-        itemStyle: {
-          color: (params) => {
-            const colors = ['#F56C6C', '#E6A23C', '#67C23A']
-            return colors[params.dataIndex]
-          }
-        },
-        label: {
-          show: true,
-          position: 'top',
-          formatter: '{c}%'
-        }
-      }
-    ]
-  }
-
-  priorityChartInstance.setOption(option)
+  priorityChartInstance.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: params => {
+      const item = data.find(d => d.name === params[0].name)
+      return `${params[0].name}优先级<br/>任务数: ${item.value}个<br/>占比: ${item.percentage}%`
+    }},
+    xAxis: { type: 'category', data: priorities },
+    yAxis: { type: 'value', max: 100, min: 0, axisLabel: { formatter: '{value}%' } },
+    series: [{ data: data.map(d => parseFloat(d.percentage)), type: 'bar', itemStyle: { color: p => ['#F56C6C','#E6A23C','#67C23A'][p.dataIndex] }, label: { show: true, position: 'top', formatter: '{c}%' } }]
+  })
 }
 
-// 时间维度切换处理
-function handleTimeDimensionChange(value) {
-  console.log('📊 [Statistics] 时间维度切换为:', value)
-  refreshCharts()
-}
+function refreshCharts() { initTrendChart(); initCategoryChart(); initPriorityChart() }
 
-// 自定义日期范围变化处理
-function handleCustomDateChange(value) {
-  console.log('📊 [Statistics] 自定义日期范围:', value)
-  refreshCharts()
-}
-
-
-// 刷新所有图表
-function refreshCharts() {
-  console.log('🔄 [Statistics] refreshCharts 被调用')
-  console.log('📦 [Statistics] 当前任务数量:', taskStore.tasks.length)
-  console.log('📦 [Statistics] 已完成任务:', taskStore.completedTasks.length)
-  console.log('📦 [Statistics] 待办任务:', taskStore.pendingTasks.length - taskStore.expiredTasks.length)
-  console.log('📦 [Statistics] 已过期任务:', taskStore.expiredTasks.length)
-
-  initTrendChart()
-  initCategoryChart()
-  initPriorityChart()
-}
+function handleTimeDimensionChange() { refreshCharts() }
+function handleCustomDateChange() { refreshCharts() }
+function handleResetCustomDate() { customDateRange.value = []; refreshCharts(); ElMessage.success('筛选条件已重置') }
 
 function handleRefresh() {
-  loading.value = true
-  loadTasksFromAPI().then(() => {
-    try {
-      refreshCharts()
-      loadReportLogs()
-      ElMessage.success('数据已刷新')
-    } catch (error) {
-      ElMessage.error('数据刷新失败')
-    } finally {
-      loading.value = false
-    }
-  })
+  loadTasksFromAPI().then(() => { refreshCharts(); ElMessage.success('数据已刷新') })
 }
-
-function handleViewTasks() {
-  router.push('/tasks')
-}
-
-function handleViewChat() {
-  router.push('/chat')
-}
-
+function handleViewTasks() { router.push('/tasks') }
+function handleViewChat() { router.push('/chat') }
 function handleLogout() {
   if (confirm('确定要退出登录吗？')) {
-    userStore.logout()
-    ElMessage.success('已退出登录')
-    router.push('/login')
+    userStore.logout(); ElMessage.success('已退出登录'); router.push('/login')
   }
 }
 
-// 响应式调整图表大小
 function handleResize() {
-  trendChartInstance?.resize()
-  categoryChartInstance?.resize()
-  priorityChartInstance?.resize()
+  trendChartInstance?.resize(); categoryChartInstance?.resize(); priorityChartInstance?.resize()
 }
 
-// 组件初始化（与TaskList.vue和BotChat.vue保持一致）
 onMounted(() => {
-  console.log('🚀 [Statistics] 组件已挂载')
-  
-  // 加载用户信息
   userStore.loadFromStorage()
-  console.log('👤 [Statistics] 用户信息加载完成')
-  console.log('👤 [Statistics] userId:', userStore.userId)
-  console.log('👤 [Statistics] userName:', userStore.userName)
-  console.log('👤 [Statistics] isLoggedIn:', userStore.isLoggedIn)
-  
-  // 检查登录状态
-  if (!userStore.isLoggedIn) {
-    console.warn('⚠️ [Statistics] 用户未登录，跳转到登录页')
-    router.push('/login')
-    return
-  }
-  
-  // 从API加载最新数据
-  loadTasksFromAPI().then(() => {
-    console.log('🎯 [Statistics] 数据加载完成，开始初始化图表')
-    
-    // 延迟初始化图表，确保DOM已渲染
-    setTimeout(() => {
-      refreshCharts()
-    }, 300)
-  })
-  loadReportLogs()
+  if (!userStore.isLoggedIn) { router.push('/login'); return }
+  loadTasksFromAPI().then(() => { setTimeout(refreshCharts, 300) })
   window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
-  console.log('🔚 [Statistics] 组件已卸载')
   window.removeEventListener('resize', handleResize)
-  trendChartInstance?.dispose()
-  categoryChartInstance?.dispose()
-  priorityChartInstance?.dispose()
-  stopProgressAnimation()
-  if (pollingInterval) clearInterval(pollingInterval)
+  trendChartInstance?.dispose(); categoryChartInstance?.dispose(); priorityChartInstance?.dispose()
+  if (loadingTimer) clearInterval(loadingTimer)
 })
 </script>
 
@@ -1195,7 +828,6 @@ onUnmounted(() => {
   background-color: #f5f7fa;
   position: relative;
 
-  // 统一的导航栏样式
   .header {
     background: white;
     padding: 16px 24px;
@@ -1218,23 +850,16 @@ onUnmounted(() => {
         display: flex;
         align-items: center;
         justify-content: center;
-
-        .logo-icon {
-          font-size: 20px;
-        }
+        .logo-icon { font-size: 20px; }
       }
 
-      .title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #303133;
-      }
+      .title { font-size: 18px; font-weight: 600; color: #303133; }
     }
 
     .header-right {
       display: flex;
       align-items: center;
-      gap: 6px; // 统一按钮间距
+      gap: 6px;
 
       .user-info {
         padding: 6px 12px;
@@ -1244,31 +869,15 @@ onUnmounted(() => {
         color: #606266;
         font-weight: 500;
         margin-right: 8px;
-
-        &::before {
-          content: '👤';
-          font-size: 16px;
-        }
-      }
-
-      // 统一按钮样式
-      .el-button {
-        font-size: 14px;
-        padding: 8px 12px;
-        
-        .el-icon {
-          margin-right: 4px;
-        }
+        &::before { content: '👤'; font-size: 16px; }
       }
     }
   }
 
-  // 主内容区
   .main-content {
     flex: 1;
     padding: 24px;
     overflow-y: auto;
-    position: relative;
 
     .overview-cards {
       display: grid;
@@ -1276,7 +885,6 @@ onUnmounted(() => {
       gap: 24px;
       margin-bottom: 32px;
 
-       // 准时完成率卡片
       .rate-card {
         border-radius: 8px;
         padding: 20px;
@@ -1285,73 +893,22 @@ onUnmounted(() => {
         gap: 16px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         transition: all 0.3s;
+        &:hover { transform: translateY(-2px); }
 
-        &:hover {
-          transform: translateY(-2px);
-        }
-
-        // 蓝色卡片 - 完成率
-        &.blue-card {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
-
-          &:hover {
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-          }
-        }
-
-        // 紫色卡片 - 准时完成率
-        &.purple-card {
-          background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-          box-shadow: 0 2px 8px rgba(240, 147, 251, 0.2);
-
-          &:hover {
-            box-shadow: 0 4px 12px rgba(240, 147, 251, 0.3);
-          }
-        }
-        
-        // 红色卡片 - 逾期率
-        &.red-card {
-          background: linear-gradient(135deg, #cb452e 0%, #e7ba27 100%);
-          box-shadow: 0 2px 8px rgba(248, 80, 50, 0.2);
-
-          &:hover {
-            box-shadow: 0 4px 12px rgba(248, 80, 50, 0.3);
-          }
-        }
+        &.blue-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        &.purple-card { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        &.red-card { background: linear-gradient(135deg, #cb452e 0%, #e7ba27 100%); }
 
         .rate-icon {
-          width: 56px;
-          height: 56px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 24px;
-          flex-shrink: 0;
+          width: 56px; height: 56px; border-radius: 12px;
+          background: rgba(255,255,255,.2); display: flex;
+          align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0;
         }
 
         .rate-content {
-          flex: 1;
-
-          .rate-title {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.9);
-            margin-bottom: 4px;
-          }
-
-          .rate-value {
-            font-size: 32px;
-            font-weight: bold;
-            color: #fff;
-            margin-bottom: 4px;
-          }
-
-          .rate-desc {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.7);
-          }
+          .rate-title { font-size: 14px; color: rgba(255,255,255,.9); margin-bottom: 4px; }
+          .rate-value { font-size: 32px; font-weight: bold; color: #fff; margin-bottom: 4px; }
+          .rate-desc { font-size: 12px; color: rgba(255,255,255,.7); }
         }
       }
     }
@@ -1361,45 +918,22 @@ onUnmounted(() => {
       border-radius: 8px;
       padding: 24px;
       margin-bottom: 24px;
-
-      h3 {
-        font-size: 16px;
-        font-weight: bold;
-        color: #303133;
-        margin-bottom: 16px;
-      }
-
-      .chart {
-        width: 100%;
-        height: 300px;
-      }
+      h3 { font-size: 16px; font-weight: bold; color: #303133; margin-bottom: 16px; }
+      .chart { width: 100%; height: 300px; }
     }
   }
 
   .loading-overlay {
     position: absolute;
-    top: 60px;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    top: 60px; left: 0; right: 0; bottom: 0;
     background: rgba(245, 247, 250, 1);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;     // ← 足够高，覆盖图表
-    color: #909399;
-
-    .el-icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-      animation: rotating 1.5s linear infinite;
-    }
-
-    span {
-      font-size: 16px;
-    }
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 9999; color: #909399;
+    .el-icon { font-size: 48px; margin-bottom: 16px; animation: rotating 1.5s linear infinite; }
+    span { font-size: 16px; }
   }
+
   .filter-actions {
     display: flex;
     justify-content: space-between;
@@ -1413,312 +947,263 @@ onUnmounted(() => {
       display: flex;
       align-items: center;
       gap: 12px;
-
-      .filter-label {
-        font-size: 14px;
-        color: #606266;
-        font-weight: 500;
-      }
+      .filter-label { font-size: 14px; color: #606266; font-weight: 500; }
     }
-    .custom-date-picker {
+
+    .custom-date-picker { display: flex; align-items: center; }
+
+    .report-button-group {
       display: flex;
-      align-items: center;
-    }
-  }
-}
-// 报告内容样式
-.report-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-  background: #f5f7fa;
-  
-  // Markdown 内容样式
-  h1, h2, h3, h4, h5, h6 {
-    margin: 20px 0 12px 0;
-    color: #303133;
-    font-weight: 600;
-  }
-
-  h1 {
-    font-size: 28px;
-    border-bottom: 2px solid #e5e5e5;
-    padding-bottom: 12px;
-  }
-
-  h2 {
-    font-size: 24px;
-    border-bottom: 1px solid #e5e5e5;
-    padding-bottom: 8px;
-  }
-
-  h3 {
-    font-size: 20px;
-  }
-
-  h4 {
-    font-size: 18px;
-  }
-
-  p {
-    margin: 12px 0;
-    line-height: 1.8;
-    color: #606266;
-  }
-
-  strong {
-    color: #303133;
-    font-weight: 600;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 16px 0;
-    background: #fff;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-
-    th, td {
-      padding: 12px;
-      border: 1px solid #e5e5e5;
-      text-align: left;
-      color: #606266;
-    }
-
-    th {
-      background-color: #f5f7fa;
-      font-weight: 600;
-      color: #303133;
-    }
-
-    tr:hover {
-      background-color: #f9fafc;
-    }
-  }
-
-  ul, ol {
-    margin: 12px 0;
-    padding-left: 24px;
-    color: #606266;
-
-    li {
-      margin: 6px 0;
-      line-height: 1.8;
-    }
-  }
-
-  code {
-    background-color: #f5f7fa;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-  }
-
-  blockquote {
-    border-left: 4px solid #409EFF;
-    padding-left: 16px;
-    margin: 16px 0;
-    color: #909399;
-    font-style: italic;
-  }
-}
-
-// 对话框底部按钮样式
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  
-  .el-button {
-    min-width: 100px;
-    
-    .el-icon {
-      margin-right: 6px;
+      gap: 12px;
     }
   }
 }
 
-@keyframes rotating {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* ── 报告生成 Loading 弹窗 ── */
+:deep(.report-loading-dialog .el-dialog) {
+  border-radius: 16px;
+  overflow: hidden;
 }
-// 报告按钮组
-.report-button-group {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  
-  .badge {
-    margin-left: 4px;
-  }
-}
+:deep(.report-loading-dialog .el-dialog__header) { display: none; }
+:deep(.report-loading-dialog .el-dialog__body) { padding: 0; }
 
-// 报告进度对话框 - 居中样式
-:deep(.report-progress-dialog) {
-  .el-dialog {
-    border-radius: 16px;
-    
-    .el-dialog__header {
-      text-align: center;
-      border-bottom: none;
-      padding-bottom: 0;
-    }
-    
-    .el-dialog__body {
-      text-align: center;
-      padding: 20px 30px 30px;
-    }
-  }
-}
-
-// 报告加载样式（居中）
-.report-loading {
+.report-loading-body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  padding: 40px 40px 36px;
+  background: linear-gradient(160deg, #0f0c29, #302b63, #24243e);
+  color: #fff;
   text-align: center;
-  
-  .el-icon {
-    color: #409EFF;
-    margin-bottom: 24px;
-  }
-  
-  p {
-    font-size: 16px;
-    color: #303133;
-    margin: 0 0 12px 0;
-  }
-  
-  .loading-tip {
+}
+
+/* 三环 spinner */
+.loading-spinner {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 24px;
+}
+.spinner-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: #7c7cff;
+  animation: spin 1.4s linear infinite;
+}
+.spinner-ring.delay1 {
+  inset: 10px;
+  border-top-color: #a78bfa;
+  animation-delay: -0.4s;
+}
+.spinner-ring.delay2 {
+  inset: 20px;
+  border-top-color: #e879f9;
+  animation-delay: -0.8s;
+}
+
+.loading-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+  background: linear-gradient(90deg, #a78bfa, #e879f9);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.loading-sub {
+  font-size: 14px;
+  color: rgba(255,255,255,.6);
+  margin-bottom: 28px;
+}
+
+.loading-steps {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.06);
     font-size: 14px;
-    color: #909399;
-    margin-bottom: 24px;
-  }
-  
-  .loading-progress {
-    width: 100%;
-    margin: 16px 0;
-  }
-  
-  .loading-actions {
-    margin-top: 20px;
+    color: rgba(255,255,255,.4);
+    transition: all 0.5s;
+
+    &.active {
+      background: rgba(124, 124, 255, .15);
+      color: #a78bfa;
+      border: 1px solid rgba(124,124,255,.3);
+    }
+    &.done {
+      color: #6ee7b7;
+      background: rgba(110,231,183,.1);
+      border: 1px solid rgba(110,231,183,.25);
+    }
+
+    .step-icon {
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+    }
   }
 }
 
-// 报告日志对话框样式
-.report-log-dialog {
-  .report-log-list {
-    min-height: 300px;
-    max-height: 500px;
-    overflow-y: auto;
+.loading-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,.12);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 16px;
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #7c7cff, #e879f9);
+    transition: width 1.2s ease;
   }
-  
-  .empty-logs {
-    text-align: center;
-    padding: 60px 20px;
-    color: #909399;
-    
-    .el-icon {
-      font-size: 64px;
-      margin-bottom: 16px;
-    }
-    
-    p {
-      margin: 8px 0;
-    }
-    
-    .empty-tip {
-      font-size: 12px;
-      color: #c0c4cc;
-    }
+}
+
+.loading-hint {
+  font-size: 12px;
+  color: rgba(255,255,255,.35);
+}
+
+/* ── 报告展示弹窗 ── */
+:deep(.report-content-dialog .el-dialog) {
+  border-radius: 14px;
+  overflow: hidden;
+}
+:deep(.report-content-dialog .el-dialog__header) {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  padding: 18px 24px;
+  .el-dialog__title {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
   }
-  
-  .log-items {
-    .log-item {
-      padding: 16px;
-      margin-bottom: 12px;
-      border-radius: 8px;
-      background: #f5f7fa;
-      transition: all 0.3s;
-      
-      &:hover {
-        background: #ecf5ff;
-      }
-      
-      &.log-pending {
-        border-left: 3px solid #E6A23C;
-      }
-      
-      &.log-success {
-        border-left: 3px solid #67C23A;
-      }
-      
-      &.log-failed {
-        border-left: 3px solid #F56C6C;
-      }
-      
-      .log-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-        
-        .log-info {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          
-          .el-icon {
-            font-size: 18px;
-            
-            &.is-loading {
-              color: #E6A23C;
-            }
-          }
-          
-          .log-title {
-            font-weight: 600;
-            color: #303133;
-          }
-        }
-        
-        .log-time {
-          font-size: 12px;
-          color: #909399;
-        }
-      }
-      
-      .log-date-range {
-        font-size: 13px;
-        color: #606266;
-        margin-bottom: 12px;
-        padding-left: 26px;
-      }
-      
-      .log-actions {
-        padding-left: 26px;
-        display: flex;
-        gap: 8px;
-      }
-      
-      .log-error {
-        margin-top: 8px;
-        padding: 8px 12px;
-        background: #fef0f0;
-        border-radius: 4px;
-        font-size: 12px;
-        color: #F56C6C;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-    }
+  .el-dialog__headerbtn .el-icon { color: rgba(255,255,255,.7); }
+}
+:deep(.report-content-dialog .el-dialog__body) {
+  padding: 0;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+:deep(.report-content-dialog .el-dialog__footer) {
+  border-top: 1px solid #e5e7eb;
+  padding: 14px 20px;
+}
+
+.report-viewer {
+  padding: 28px 32px;
+}
+
+.report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 14px 18px;
+  background: #f0f4ff;
+  border-radius: 8px;
+  margin-bottom: 28px;
+  border-left: 4px solid #4a6cf7;
+
+  .report-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    .meta-label { font-size: 11px; color: #6b7280; font-weight: 500; }
+    .meta-value { font-size: 13px; color: #1a1a2e; font-weight: 600; }
   }
+}
+
+/* Markdown 渲染样式 */
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.85;
+  color: #374151;
+
+  :deep(h1) {
+    font-size: 22px; font-weight: 700; color: #1a1a2e;
+    border-bottom: 2px solid #4a6cf7; padding-bottom: 10px; margin: 28px 0 14px;
+  }
+  :deep(h2) {
+    font-size: 18px; font-weight: 700; color: #1a1a2e;
+    border-bottom: 1px solid #e5e7eb; padding-bottom: 7px; margin: 22px 0 12px;
+  }
+  :deep(h3) { font-size: 16px; font-weight: 600; color: #374151; margin: 18px 0 9px; }
+  :deep(h4) { font-size: 14px; font-weight: 600; color: #4b5563; margin: 14px 0 7px; }
+  :deep(p) { margin: 10px 0; }
+  :deep(strong) { font-weight: 700; color: #1a1a2e; }
+  :deep(em) { font-style: italic; color: #6b7280; }
+
+  :deep(ul), :deep(ol) { padding-left: 22px; margin: 10px 0; }
+  :deep(li) { margin: 5px 0; }
+
+  :deep(blockquote) {
+    border-left: 3px solid #4a6cf7;
+    padding: 10px 16px; margin: 14px 0;
+    color: #6b7280; background: #f8faff;
+    border-radius: 0 6px 6px 0;
+  }
+
+  :deep(.md-table) {
+    width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px;
+    border-radius: 8px; overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  :deep(.md-table th) {
+    background: #1a1a2e; color: #fff;
+    padding: 11px 14px; text-align: left; font-weight: 600; font-size: 13px;
+  }
+  :deep(.md-table td) {
+    padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #374151;
+  }
+  :deep(.md-table tr:nth-child(even) td) { background: #f8faff; }
+  :deep(.md-table tr:hover td) { background: #eff6ff; }
+
+  :deep(.code-block) {
+    background: #1e1e2e; color: #cdd6f4;
+    padding: 16px; border-radius: 10px;
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 13px; overflow-x: auto; margin: 14px 0;
+    line-height: 1.6;
+  }
+  :deep(.inline-code) {
+    background: #f0f4ff; color: #4a6cf7;
+    padding: 2px 7px; border-radius: 4px;
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 13px;
+  }
+  :deep(.md-hr) {
+    border: none; border-top: 1px solid #e5e7eb; margin: 22px 0;
+  }
+  :deep(a) { color: #4a6cf7; text-decoration: underline; }
+}
+
+.report-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes rotating {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>
