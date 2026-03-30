@@ -18,7 +18,8 @@
           <el-icon><DataAnalysis /></el-icon>
           统计看板
         </el-button>
-        <el-button text @click="handleLogout" type="danger">退出</el-button>
+        <!-- 【可扩展】自动登录模式下隐藏退出按钮；恢复多用户登录后取消注释 -->
+        <!-- <el-button text @click="handleLogout" type="danger">退出</el-button> -->
       </div>
     </div>
 
@@ -189,13 +190,14 @@ const handleViewStatistics = () => {
 };
 
 // 退出登录
-const handleLogout = () => {
-  if (confirm('确定要退出登录吗？')) {
-    userStore.logout();
-    ElMessage.success('已退出登录');
-    router.push('/login');
-  }
-};
+// 【可扩展】恢复多用户登录后取消注释
+// const handleLogout = () => {
+//   if (confirm('确定要退出登录吗？')) {
+//     userStore.logout();
+//     ElMessage.success('已退出登录');
+//     router.push('/login');
+//   }
+// };
 
 // 滚动到底部
 const scrollToBottom = async () => {
@@ -211,11 +213,11 @@ onMounted(async () => {
   userStore.loadFromStorage();
   
   // 如果没有用户信息，跳转到登录页
-  if (!userStore.isLoggedIn) {
-    router.push('/login');
-    return;
-  }
-
+ // 【可扩展】自动登录模式下无需检查登录状态，userStore 已由 main.js 自动填充
+// if (!userStore.isLoggedIn) {
+//   router.push('/login');
+//   return;
+// }
 // 如果没有消息,显示欢迎消息
   if (chatStore.messages.length === 0) {
     chatStore.addBotMessage(

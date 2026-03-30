@@ -19,7 +19,8 @@
         <el-button text @click="handleViewTasks"><el-icon>
             <List />
           </el-icon>任务列表</el-button>
-        <el-button text @click="handleLogout" type="danger">退出</el-button>
+        <!-- 【可扩展】自动登录模式下隐藏退出按钮；恢复多用户登录后取消注释 -->
+        <!-- <el-button text @click="handleLogout" type="danger">退出</el-button> -->
       </div>
     </div>
 
@@ -59,7 +60,7 @@
             <el-icon v-if="!isGenerating">
               <Document />
             </el-icon>
-            {{ isGenerating ? 'AI 生成中...' : '生成复盘报告' }}
+            {{ isGenerating ? '生成中...' : '生成复盘报告' }}
           </el-button>
           <el-badge :value="reportLogs.length" :hidden="reportLogs.length === 0" type="info">
             <el-button size="large" @click="logDrawerVisible = true">
@@ -130,7 +131,7 @@
           <div class="spinner-ring delay1"></div>
           <div class="spinner-ring delay2"></div>
         </div>
-        <h3 class="loading-title">AI 正在生成复盘报告</h3>
+        <h3 class="loading-title">正在生成复盘报告</h3>
         <p class="loading-sub">正在分析您的任务数据，生成个性化洞察...</p>
         <div class="loading-steps">
           <div class="step" v-for="(s, i) in loadingStepList" :key="i"
@@ -949,12 +950,23 @@ function handleResetCustomDate() { customDateRange.value = []; refreshCharts(); 
 function handleRefresh() { loadTasksFromAPI().then(() => { refreshCharts(); ElMessage.success('数据已刷新') }) }
 function handleViewTasks() { router.push('/tasks') }
 function handleViewChat() { router.push('/chat') }
-function handleLogout() { if (confirm('确定要退出登录吗？')) { userStore.logout(); ElMessage.success('已退出登录'); router.push('/login') } }
+// 【可扩展】恢复多用户登录后取消注释
+// const handleLogout = () => {
+//   if (confirm('确定要退出登录吗？')) {
+//     userStore.logout();
+//     ElMessage.success('已退出登录');
+//     router.push('/login');
+//   }
+// };
 function handleResize() { trendChartInstance?.resize(); categoryChartInstance?.resize(); priorityChartInstance?.resize() }
 
 onMounted(() => {
   userStore.loadFromStorage()
-  if (!userStore.isLoggedIn) { router.push('/login'); return }
+  // 【可扩展】自动登录模式下无需检查登录状态，userStore 已由 main.js 自动填充
+// if (!userStore.isLoggedIn) {
+//   router.push('/login');
+//   return;
+// }
   loadLogsFromStorage()   // ★ 加载日志
   loadTasksFromAPI().then(() => { setTimeout(refreshCharts, 300) })
   window.addEventListener('resize', handleResize)

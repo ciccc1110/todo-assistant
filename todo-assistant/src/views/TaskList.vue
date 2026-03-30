@@ -28,7 +28,8 @@
           </el-icon>
           统计看板
         </el-button>
-        <el-button text @click="handleLogout" type="danger">退出</el-button>
+        <!-- 【可扩展】自动登录模式下隐藏退出按钮；恢复多用户登录后取消注释 -->
+        <!-- <el-button text @click="handleLogout" type="danger">退出</el-button> -->
       </div>
     </div>
 
@@ -609,15 +610,22 @@ const handleDeleteTask = async (task) => {
 const handleRefresh = () => { loadAllTasks(); ElMessage.success('已刷新') }
 const handleBackToChat = () => router.push('/chat')
 const handleViewStatistics = () => router.push('/statistics')
-const handleLogout = () => {
-  if (confirm('确定要退出登录吗？')) {
-    userStore.logout(); ElMessage.success('已退出登录'); router.push('/login')
-  }
-}
+// 【可扩展】恢复多用户登录后取消注释
+// const handleLogout = () => {
+//   if (confirm('确定要退出登录吗？')) {
+//     userStore.logout();
+//     ElMessage.success('已退出登录');
+//     router.push('/login');
+//   }
+// };
 
 onMounted(() => {
   userStore.loadFromStorage()
-  if (!userStore.isLoggedIn) { router.push('/login'); return }
+  // 【可扩展】自动登录模式下无需检查登录状态，userStore 已由 main.js 自动填充
+// if (!userStore.isLoggedIn) {
+//   router.push('/login');
+//   return;
+// }
   loadAllTasks()
 })
 </script>
