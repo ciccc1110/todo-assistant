@@ -59,7 +59,7 @@
             <el-icon v-if="!isGenerating">
               <Document />
             </el-icon>
-            {{ isGenerating ? 'BOT 生成中...' : '生成复盘报告' }}
+            {{ isGenerating ? 'AI 生成中...' : '生成复盘报告' }}
           </el-button>
           <el-badge :value="reportLogs.length" :hidden="reportLogs.length === 0" type="info">
             <el-button size="large" @click="logDrawerVisible = true">
@@ -130,7 +130,7 @@
           <div class="spinner-ring delay1"></div>
           <div class="spinner-ring delay2"></div>
         </div>
-        <h3 class="loading-title">正在生成复盘报告</h3>
+        <h3 class="loading-title">AI 正在生成复盘报告</h3>
         <p class="loading-sub">正在分析您的任务数据，生成个性化洞察...</p>
         <div class="loading-steps">
           <div class="step" v-for="(s, i) in loadingStepList" :key="i"
@@ -510,59 +510,227 @@ function stopLoadingAnimation(ok = true) {
   if (ok) { loadingStep.value = 4; loadingProgress.value = 100 }
 }
 
-//  Markdown 解析 
+// ── Markdown 解析（逐行状态机，健壮处理表格/列表/代码块） ───────────
 function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+/** 对单元格/段落文字做行内样式替换（粗体/斜体/行内代码/链接） */
+function inlineMarkdown(s) {
+  s = s.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+  s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  s = s.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>')
+  return s
+}
+
+/** 判断一行是否是表格分隔行（如 |---|:---:|---| ） */
+function isTableSep(line) {
+  return /^\|?\s*[-:]+[-| :]*\|?\s*$/.test(line.trim())
+}
+
+/** 判断一行是否是表格数据行（以 | 开头或结尾，或包含 | ） */
+function isTableRow(line) {
+  const t = line.trim()
+  return t.startsWith('|') || t.endsWith('|') || (t.includes('|') && !t.startsWith('#'))
+}
+
+/** 解析一行表格行，返回单元格数组 */
+function parseTableRow(line) {
+  return line.trim()
+    .replace(/^\|/, '').replace(/\|$/, '')
+    .split('|')
+    .map(c => c.trim())
+}
+
+/**
+ * 健壮的 Markdown → HTML 解析器
+ * 采用逐行状态机，正确处理：
+ *  - 多行代码块
+ *  - 有无末尾换行的表格（核心修复点）
+ *  - 连续有序/无序列表
+ *  - 引用块
+ *  - 标题、分隔线、段落
+ */
 function parseMarkdown(md) {
   if (!md) return ''
-  let h = md
-  // 代码块优先处理
-  h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
-    `<pre class="code-block"><code class="lang-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`)
-  h = h.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-  // 标题
-  h = h.replace(/^#{6} (.+)$/gm, '<h6>$1</h6>')
-  h = h.replace(/^#{5} (.+)$/gm, '<h5>$1</h5>')
-  h = h.replace(/^#{4} (.+)$/gm, '<h4>$1</h4>')
-  h = h.replace(/^#{3} (.+)$/gm, '<h3>$1</h3>')
-  h = h.replace(/^#{2} (.+)$/gm, '<h2>$1</h2>')
-  h = h.replace(/^# (.+)$/gm, '<h1>$1</h1>')
-  // 分隔线
-  h = h.replace(/^(---|\*\*\*|___)\s*$/gm, '<hr class="md-hr"/>')
-  // 引用
-  h = h.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-  // 强调
-  h = h.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-  h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  h = h.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  // 表格
-  h = h.replace(/(\|.+\|\n)((?:\|[-: ]+\|\n))((?:\|.+\|\n?)*)/g, (_, hdr, _sep, rows) => {
-    const row = (r, tag = 'td') =>
-      '<tr>' + r.trim().replace(/^\||\|$/g, '').split('|').map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>'
-    return `<table class="md-table"><thead>${row(hdr, 'th')}</thead><tbody>${rows.trim().split('\n').filter(Boolean).map(r => row(r)).join('')}</tbody></table>`
-  })
-  // 有序列表
-  h = h.replace(/((?:^\d+\. .+\n?)+)/gm, m =>
-    `<ol>${m.trim().split('\n').map(l => '<li>' + l.replace(/^\d+\. /, '') + '</li>').join('')}</ol>`)
-  // 无序列表
-  h = h.replace(/((?:^[-*+] .+\n?)+)/gm, m =>
-    `<ul>${m.trim().split('\n').map(l => '<li>' + l.replace(/^[-*+] /, '') + '</li>').join('')}</ul>`)
-  // 链接
-  h = h.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>')
-  // 段落
-  h = h.replace(/\n\n(?!<)/g, '</p><p>')
-  h = '<p>' + h + '</p>'
-  h = h.replace(/(?<!>)\n(?!<)/g, '<br>')
-  // 清理
-  h = h.replace(/<p>\s*<\/p>/g, '')
-  h = h.replace(/<p>(<(?:h[1-6]|ul|ol|pre|table|blockquote|hr)[^>]*>)/g, '$1')
-  h = h.replace(/(<\/(?:h[1-6]|ul|ol|pre|table|blockquote|hr)>)<\/p>/g, '$1')
-  return h
+
+  // 统一换行符
+  const raw = md.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = raw.split('\n')
+
+  const out = []
+  let i = 0
+
+  // 状态
+  let inCode = false
+  let codeLang = ''
+  let codeLines = []
+
+  // 表格缓冲
+  let tableHeader = null   // string[]
+  let tableRows = []     // string[][]
+
+  // 列表缓冲
+  let listType = null   // 'ul' | 'ol'
+  let listItems = []
+
+  // 段落缓冲
+  let paraLines = []
+
+  /** 把累积的表格 flush 成 HTML */
+  function flushTable() {
+    if (!tableHeader) return
+    const thHtml = '<tr>' + tableHeader.map(c => `<th>${inlineMarkdown(c)}</th>`).join('') + '</tr>'
+    const tbHtml = tableRows.map(cells =>
+      '<tr>' + cells.map(c => `<td>${inlineMarkdown(c)}</td>`).join('') + '</tr>'
+    ).join('')
+    out.push(
+      `<table class="md-table"><thead>${thHtml}</thead>` +
+      (tbHtml ? `<tbody>${tbHtml}</tbody>` : '') +
+      `</table>`
+    )
+    tableHeader = null
+    tableRows = []
+  }
+
+  /** 把累积的列表 flush 成 HTML */
+  function flushList() {
+    if (!listType || listItems.length === 0) { listType = null; listItems = []; return }
+    const tag = listType
+    const html = `<${tag}>${listItems.map(t => `<li>${inlineMarkdown(t)}</li>`).join('')}</${tag}>`
+    out.push(html)
+    listType = null
+    listItems = []
+  }
+
+  /** 把累积的段落 flush 成 HTML */
+  function flushPara() {
+    if (paraLines.length === 0) return
+    const text = paraLines.join('<br>')
+    if (text.trim()) out.push(`<p>${inlineMarkdown(text)}</p>`)
+    paraLines = []
+  }
+
+  /** 所有 flush 一起调用 */
+  function flushAll() {
+    flushTable()
+    flushList()
+    flushPara()
+  }
+
+  while (i < lines.length) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    // ── 代码块开始/结束 ──────────────────────────────────────────
+    if (trimmed.startsWith('```')) {
+      if (!inCode) {
+        flushAll()
+        inCode = true
+        codeLang = trimmed.slice(3).trim() || 'text'
+        codeLines = []
+      } else {
+        out.push(
+          `<pre class="code-block"><code class="lang-${codeLang}">${escapeHtml(codeLines.join('\n'))}</code></pre>`
+        )
+        inCode = false
+        codeLines = []
+      }
+      i++; continue
+    }
+    if (inCode) { codeLines.push(line); i++; continue }
+
+    // ── 空行：flush 一切 ─────────────────────────────────────────
+    if (trimmed === '') {
+      flushAll()
+      i++; continue
+    }
+
+    // ── 标题 ────────────────────────────────────────────────────
+    const headMatch = trimmed.match(/^(#{1,6})\s+(.+)$/)
+    if (headMatch) {
+      flushAll()
+      const level = headMatch[1].length
+      out.push(`<h${level}>${inlineMarkdown(headMatch[2])}</h${level}>`)
+      i++; continue
+    }
+
+    // ── 分隔线（纯 --- / *** / ___ 行，且不是表格分隔） ──────────
+    if (/^(---|\*\*\*|___)$/.test(trimmed) && !isTableRow(line)) {
+      flushAll()
+      out.push('<hr class="md-hr"/>')
+      i++; continue
+    }
+
+    // ── 引用 ────────────────────────────────────────────────────
+    if (trimmed.startsWith('> ')) {
+      flushTable(); flushList()
+      paraLines.push(`<blockquote>${inlineMarkdown(trimmed.slice(2))}</blockquote>`)
+      i++; continue
+    }
+
+    // ── 表格（核心修复：向前看分隔行，不依赖末尾换行） ────────────
+    if (isTableRow(line)) {
+      // 如果下一行是分隔行，当前行是表头
+      const nextLine = lines[i + 1]
+      if (!tableHeader && nextLine !== undefined && isTableSep(nextLine)) {
+        flushList(); flushPara()
+        tableHeader = parseTableRow(line)
+        i += 2   // 跳过表头行 + 分隔行
+        continue
+      }
+      // 如果已在表格中，当前行是数据行
+      if (tableHeader !== null && !isTableSep(line)) {
+        tableRows.push(parseTableRow(line))
+        i++; continue
+      }
+      // 下一行不是分隔行 → 不是表格，作为普通文本处理（fall through 到段落）
+    }
+
+    // 遇到非表格行时终结正在收集中的表格
+    if (tableHeader !== null && !isTableRow(line)) {
+      flushTable()
+    }
+
+    // ── 无序列表 ─────────────────────────────────────────────────
+    const ulMatch = trimmed.match(/^[-*+]\s+(.+)$/)
+    if (ulMatch) {
+      flushTable()
+      if (listType === 'ol') flushList()
+      if (!listType) listType = 'ul'
+      listItems.push(ulMatch[1])
+      i++; continue
+    }
+
+    // ── 有序列表 ─────────────────────────────────────────────────
+    const olMatch = trimmed.match(/^\d+\.\s+(.+)$/)
+    if (olMatch) {
+      flushTable()
+      if (listType === 'ul') flushList()
+      if (!listType) listType = 'ol'
+      listItems.push(olMatch[1])
+      i++; continue
+    }
+
+    // ── 普通段落文字 ─────────────────────────────────────────────
+    flushTable()
+    flushList()
+    paraLines.push(trimmed)
+    i++
+  }
+
+  // 文档末尾：flush 所有剩余内容
+  if (inCode) {
+    out.push(`<pre class="code-block"><code class="lang-${codeLang}">${escapeHtml(codeLines.join('\n'))}</code></pre>`)
+  }
+  flushAll()
+
+  return out.join('\n')
 }
 
-//  生成报告（同步）
+// ── 生成报告（同步）────────────────────────────────────────────────
 async function handleGenerateReport() {
   if (isGenerating.value) { ElMessage.warning('报告正在生成中，请稍候...'); return }
   const { startDate, endDate } = getCurrentDateRange()
@@ -610,7 +778,7 @@ async function handleGenerateReport() {
 // ── 导出工具 ─────────────────────────────────────────────────────
 const PRINT_CSS = `
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.8;color:#1a1a2e;padding:40px 60px;background:#fff}
+body{font-family:'PingFang SC','Microsoft YaHei','Hiragino Sans GB',sans-serif;font-size:14px;line-height:1.85;color:#1a1a2e;padding:40px 60px;background:#fff}
 .report-meta{display:flex;gap:32px;flex-wrap:wrap;padding:16px 20px;background:#f0f4ff;border-radius:8px;margin-bottom:32px;border-left:4px solid #4a6cf7}
 .report-meta-item{display:flex;flex-direction:column;gap:4px}
 .meta-label{font-size:11px;color:#6b7280;font-weight:500}
@@ -622,15 +790,16 @@ h4{font-size:15px;font-weight:600;color:#4b5563;margin:16px 0 8px}
 p{margin:10px 0}strong{font-weight:700;color:#1a1a2e}em{font-style:italic}
 ul,ol{padding-left:24px;margin:10px 0}li{margin:5px 0}
 blockquote{border-left:3px solid #4a6cf7;padding:10px 16px;margin:16px 0;color:#6b7280;background:#f8faff;border-radius:0 6px 6px 0}
-.md-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px}
-.md-table th{background:#4a6cf7;color:#fff;padding:10px 14px;text-align:left;font-weight:600}
-.md-table td{padding:9px 14px;border-bottom:1px solid #e2e8f0;color:#374151}
-.md-table tr:nth-child(even) td{background:#f8faff}
-.code-block{background:#1e1e2e;color:#cdd6f4;padding:16px;border-radius:8px;font-family:'Courier New',monospace;font-size:13px;overflow-x:auto;margin:14px 0}
-.inline-code{background:#f0f4ff;color:#4a6cf7;padding:2px 6px;border-radius:4px;font-family:'Courier New',monospace;font-size:13px}
+.md-table{width:100%;border-collapse:collapse;margin:18px 0;font-size:13px;page-break-inside:avoid}
+.md-table th{background:#4a6cf7;color:#fff;padding:11px 14px;text-align:left;font-weight:600;border:none}
+.md-table td{padding:10px 14px;border-bottom:1px solid #edf2ff;color:#374151;vertical-align:middle}
+.md-table tbody tr:last-child td{border-bottom:none}
+.md-table tbody tr:nth-child(even) td{background:#f5f7ff}
+.code-block{background:#1e1e2e;color:#cdd6f4;padding:16px;border-radius:8px;font-family:'Courier New',Consolas,monospace;font-size:13px;overflow-x:auto;margin:14px 0;line-height:1.6;page-break-inside:avoid}
+.inline-code{background:#f0f4ff;color:#4a6cf7;padding:2px 7px;border-radius:4px;font-family:'Courier New',Consolas,monospace;font-size:12px}
 .md-hr{border:none;border-top:1px solid #e2e8f0;margin:24px 0}
-a{color:#4a6cf7}
-@media print{body{padding:20px 40px}@page{margin:1cm;size:A4}}
+a{color:#4a6cf7;text-decoration:none}
+@media print{body{padding:20px 40px}@page{margin:1.5cm;size:A4}h1,h2,h3,h4{page-break-after:avoid}.md-table{page-break-inside:avoid}}
 `
 
 function openPrintWindow(title, dateRange, genTime, markdown) {
@@ -1280,34 +1449,46 @@ onUnmounted(() => {
   :deep(.md-table) {
     width: 100%;
     border-collapse: collapse;
-    margin: 14px 0;
+    margin: 18px 0;
     font-size: 13px;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, .08)
+    box-shadow: 0 2px 8px rgba(74, 108, 247, .1)
+  }
+
+  :deep(.md-table thead) {
+    background: #4a6cf7
   }
 
   :deep(.md-table th) {
-    background: #1a1a2e;
+    background: #4a6cf7;
     color: #fff;
-    padding: 11px 14px;
+    padding: 12px 16px;
     text-align: left;
     font-weight: 600;
-    font-size: 13px
+    font-size: 13px;
+    letter-spacing: .2px;
+    border: none
   }
 
   :deep(.md-table td) {
-    padding: 10px 14px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #374151
+    padding: 11px 16px;
+    border-bottom: 1px solid #edf2ff;
+    color: #374151;
+    vertical-align: middle
+  }
+
+  :deep(.md-table tbody tr:last-child td) {
+    border-bottom: none
   }
 
   :deep(.md-table tr:nth-child(even) td) {
-    background: #f8faff
+    background: #f5f7ff
   }
 
   :deep(.md-table tr:hover td) {
-    background: #eff6ff
+    background: #eef2ff;
+    transition: background .15s
   }
 
   :deep(.code-block) {
