@@ -398,60 +398,6 @@ export async function generateReport(params) {
   }
 }
 
-/**
- * 获取报告日志列表（保留，供报告日志功能使用）
- */
-export async function getReportLogs(userId) {
-  console.log('📄 [task.js] 获取报告日志列表, userId:', userId);
-  
-  const query = `查询我的所有复盘报告，返回纯JSON格式数据，只需要 report_id, start_date, end_date, created_at, status 字段，不要返回 report_content 字段。
-
-返回格式要求（必须是纯JSON）：
-{
-  "type": "report_list",
-  "data": {
-    "total": 报告总数,
-    "reports": [
-      {
-        "report_id": "报告ID",
-        "start_date": "开始日期",
-        "end_date": "结束日期",
-        "created_at": "创建时间",
-        "status": "状态"
-      }
-    ]
-  }
-}`;
-  
-  try {
-    const response = await callCozeBot(query, userId);
-    const logs = parseReportLogsFromResponse(response);
-    console.log(`✅ 获取到 ${logs.length} 条报告日志`);
-    return logs;
-  } catch (error) {
-    console.error('获取报告日志失败:', error);
-    return [];
-  }
-}
-
-/**
- * 删除报告日志
- */
-export async function deleteReportLog(reportId, userId) {
-  console.log('📄 [task.js] 删除报告日志:', reportId);
-  
-  const query = `删除复盘报告：
-报告ID: ${reportId}
-用户ID: ${userId}`;
-  
-  try {
-    await callCozeBot(query, userId);
-    return { success: true };
-  } catch (error) {
-    console.error('删除报告日志失败:', error);
-    return { success: false, error: error.message };
-  }
-}
 
 /**
  * 解析报告日志列表
@@ -519,8 +465,6 @@ export default {
   updateTaskStatus,
   countTasks,
   generateReport,
-  getReportLogs,
-  deleteReportLog,
   parseTaskListFromResponse,
   formatTaskData
 };
