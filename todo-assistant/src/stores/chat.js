@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 export const useChatStore = defineStore('chat', {
   state: () => ({
     messages: [],
+    conversationId: null,
   }),
 
   actions: {
@@ -50,6 +51,13 @@ export const useChatStore = defineStore('chat', {
      */
     clearMessages() {
       this.messages = [];
+    },
+
+    /**
+     * 保存对话id
+     */
+    setConversationId(id) {
+      this.conversationId = id;
     },
 
     /**

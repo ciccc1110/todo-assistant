@@ -121,7 +121,11 @@ const sendMessage = async () => {
   try {
     console.log('开始调用Bot API...');
     console.log('用户ID:', userStore.userId);
-    const botResponse = await callCozeBot(message, userStore.userId);
+    const botResponse = await callCozeBot(message, userStore.userId,chatStore.conversationId);
+    if (botResponse.conversation_id) {
+      chatStore.setConversationId(botResponse.conversation_id);
+    }
+    
     console.log('Bot响应:', botResponse);
 
     // 添加Bot回复到界面
@@ -169,7 +173,7 @@ const handleClearChat = () => {
       '• "添加一个任务: 完成毕业设计中期报告"\n'+
       '• "查看今天的待办任务"\n'+
       '• "把线上会议时间改为明天早上八点"\n'+
-      '• "删除已完成的任务"\n\n' +
+      '• "删除下午拿快递的任务"\n\n' +
       '开始你的高效管理之旅吧！🎯',
       ['今天有什么待办任务?', '查看所有任务', '今日学习任务']
     );
@@ -231,7 +235,7 @@ onMounted(async () => {
       '• "添加一个任务: 完成毕业设计中期报告"\n'+
       '• "查看今天的待办任务"\n'+
       '• "把线上会议时间改为明天早上八点"\n'+
-      '• "删除已完成的任务"\n\n' +
+      '• "删除下午拿快递的任务"\n\n' +
       '开始你的高效管理之旅吧！🎯',
       ['今天有什么待办任务?', '查看所有任务', '今日学习任务']
     );
