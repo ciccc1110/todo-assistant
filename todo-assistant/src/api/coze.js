@@ -70,12 +70,11 @@ export async function callCozeBot(query, userId = 'user_default', conversationId
       query: query,
       stream: false,
       additional_messages: [],
-      // 🔥 传递自定义变量给 Bot 工作流
+      // 传递自定义变量给 Bot 工作流
       // Bot 工作流中可以通过 {{custom_variables.task_id}} 获取此值
       custom_variables: {
         app_userid: userId,
-        channel: 'chat',
-        ...customVars  // 🔥 支持传入额外的自定义变量，如 task_id
+        ...customVars  // 支持传入额外的自定义变量，如 task_id
       }
     }
 
@@ -93,7 +92,7 @@ export async function callCozeBot(query, userId = 'user_default', conversationId
           'Authorization': `Bearer ${COZE_CONFIG.api_key}`,
           'Content-Type': 'application/json'
         },
-        timeout: 120000  // 🔥 设置超时时间为60秒，避免默认30秒超时导致请求失败
+        timeout: 120000  // 设置超时时间为60秒，避免默认30秒超时导致请求失败
       })
     }, 2)  // 最大重试2次
 

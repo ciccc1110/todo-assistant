@@ -61,6 +61,18 @@
       </div>
     </div>
 
+    <!-- 固定快捷提问栏 -->
+  <div class="quick-questions-bar">
+    <div 
+      v-for="(question, index) in quickQuestions" 
+      :key="index"
+      class="quick-question-btn"
+      @click="handleQuickQuestion(question)"
+    >
+      {{ question }}
+    </div>
+  </div>
+
     <!-- 输入区域 -->
     <div class="input-area">
       <div class="input-wrapper">
@@ -97,6 +109,9 @@ const userStore = useUserStore();
 const inputMessage = ref('');
 const chatContainer = ref(null);
 const isLoading = ref(false);
+const conversationId = ref(null)
+const quickQuestions = ref(['今天有什么待办任务?', '查看所有任务', '明天任务'])
+
 
 // 格式化消息内容（将换行符转换为 <br> 标签）
 const formatMessage = (content) => {
@@ -120,8 +135,12 @@ const sendMessage = async () => {
 
   try {
     console.log('========== 开始调用Bot API... ==========');
-    const botResponse = await callCozeBot(message, userStore.userId);
+    const botResponse = await callCozeBot(message, userStore.userId, conversationId.value);
     console.log('Bot响应:', botResponse);
+
+    if (botResponse.conversation_id) {
+      conversationId.value = botResponse.conversation_id;
+    }
 
     // 添加Bot回复到界面
     chatStore.addBotMessage(
@@ -157,6 +176,7 @@ const handleQuickQuestion = async (question) => {
 const handleClearChat = () => {
   if (confirm('确定要清空当前对话记录吗？（数据会保留，仅清空对话界面）')) {
     chatStore.clearMessages();
+    conversationId.value = null;
     // 重新显示欢迎消息
     chatStore.addBotMessage(
       '🌟 欢迎使用「小安同学」—— 您的智能待办管理助手 🌟\n\n' +
@@ -400,10 +420,37 @@ onMounted(async () => {
   }
 }
 
+.quick-questions-bar {
+  padding: 12px 20px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+
+  .quick-question-btn {
+    background-color: #ffffff;
+    border: 1px solid #DCDFE6;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 14px;
+    color: #303133;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+
+    &:hover {
+      border-color: #409EFF;
+      color: #409EFF;
+      background-color: #ecf5ff;
+    }
+  }
+}
+
+
 .input-area {
   background-color: #FFFFFF;
   padding: 16px 20px;
-  border-top: 1px solid #E4E7ED;
+  // border-top: 1px solid #E4E7ED;
+  border-top: none;
   display: flex;
   align-items: center;
   gap: 12px;

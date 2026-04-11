@@ -20,7 +20,6 @@ export const useChatStore = defineStore('chat', {
         timestamp: new Date().toISOString(),
       });
     },
-
     /**
      * 添加Bot消息
      */
