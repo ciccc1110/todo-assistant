@@ -119,8 +119,7 @@ const sendMessage = async () => {
   isLoading.value = true;
 
   try {
-    console.log('开始调用Bot API...');
-    console.log('用户ID:', userStore.userId);
+    console.log('========== 开始调用Bot API... ==========');
     const botResponse = await callCozeBot(message, userStore.userId);
     console.log('Bot响应:', botResponse);
 
@@ -141,6 +140,7 @@ const sendMessage = async () => {
     await scrollToBottom();
   } finally {
     isLoading.value = false;
+    console.log('========== 消息处理完成 ==========');
   }
 };
 
