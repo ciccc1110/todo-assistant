@@ -558,6 +558,20 @@ const handleSaveEdit = async () => {
       { id: String(editForm.id), task_content: editForm.task_content, category: editForm.category, importance: editForm.importance, deadline: editForm.deadline, status: editForm.status, description: editForm.description },
       userStore.userId
     )
+
+    const index = tasks.value.findIndex(t => String(t.id) === String(editForm.id))
+    if (index !== -1) {
+      tasks.value[index] = {
+        ...tasks.value[index],
+        task_content: editForm.task_content,
+        category: editForm.category,
+        importance: editForm.importance,
+        deadline: editForm.deadline,
+        status: editForm.status,
+        description: editForm.description,
+      }
+    }
+
     editDialogVisible.value = false
     ElMessage.success('任务已更新')
   } catch (error) {
@@ -565,7 +579,6 @@ const handleSaveEdit = async () => {
   } finally {
     isSavingEdit.value = false
     editSaving.value = false
-    await loadAllTasks()
   }
 }
 
