@@ -263,6 +263,7 @@ function formatDisplayDateTime(datetime) {
   }
   return datetime;
 }
+
 /**
  * 添加任务
  * @param {Object} task - 任务数据
@@ -288,7 +289,6 @@ export async function addTask(task, userId = 'user_default') {
  * @returns {Promise<Object>} 更新结果
  */
 export async function updateTask(task, userId = 'user_default') {
-  // ✅ 关键修改：将 ID 转为字符串传入 Bot
   const taskId = String(task.id);
   
   const query = `修改任务：
@@ -311,7 +311,6 @@ export async function updateTask(task, userId = 'user_default') {
  * @returns {Promise<Object>} 删除结果
  */
 export async function deleteTask(taskId, userId = 'user_default') {
-  // ✅ 关键修改：将 ID 转为字符串传入 Bot
   const taskIdStr = String(taskId);
   const query = `删除任务ID为 ${taskIdStr} 的任务`;
   
@@ -327,7 +326,6 @@ export async function deleteTask(taskId, userId = 'user_default') {
  * @returns {Promise<Object>} 更新结果
  */
 export async function updateTaskStatus(taskId, status, userId = 'user_default') {
-  // ✅ 关键修改：将 ID 转为字符串传入 Bot
   const taskIdStr = String(taskId);
   const statusText = status === '已完成' ? '已完成' : '进行中';
   const query = `将任务ID为 ${taskIdStr} 的任务标记为${statusText}`;
@@ -350,11 +348,7 @@ export async function countTasks(filters = {}, userId = 'user_default') {
     const pending = tasks.filter(t => t.status === '进行中').length;
     const completed = tasks.filter(t => t.status === '已完成').length;
     
-    return {
-      total,
-      pending,
-      completed
-    };
+    return { total, pending, completed };
   } catch (error) {
     console.error('统计任务数量失败:', error);
     throw error;
@@ -362,14 +356,129 @@ export async function countTasks(filters = {}, userId = 'user_default') {
 }
 
 /**
+ * 从工作流 answer 文本中提取 status 字段
+ *
+ * 根据已观测到的两种实际输出格式（冒号类型不稳定）：
+ *   格式 A：  "状态: failed\n报告内容: null"          （半角冒号 + 空格）
+ *   格式 B：  "报告生成失败，具体信息如下：\n- 状态：failed\n- 报告内容：null"  （全角冒号）
+ *
+ * 策略：
+ *   1. 用同时兼容全角/半角冒号的正则，在全文中搜索"状态"关键词行
+ *   2. 提取 status 值后转小写，并判断 "报告内容" 行是否为 null/空
+ *   3. 若找不到"状态"关键词 → 整段文本视为正常报告正文（success 场景）
+ *
+ * @param {string} answerText - Bot answer 消息的原始文本
+ * @returns {{ workflowStatus: string, reportContent: string }}
+ */
+function parseWorkflowAnswerText(answerText) {
+  if (!answerText) {
+    return { workflowStatus: 'success', reportContent: '' }
+  }
+
+  const text = answerText.trim()
+
+  // 兼容半角冒号（:）和全角冒号（：），冒号后允许有空格或无空格
+  // 同时兼容带 "- " 列表前缀的格式（格式 B）
+  const COLON = '[：:]'  // 字符类：匹配全角或半角冒号
+
+  const statusRegex   = new RegExp(`(?:^|\\n)-?\\s*状态${COLON}\\s*(\\S+)`, 'i')
+  const contentRegex  = new RegExp(`(?:^|\\n)-?\\s*报告内容${COLON}\\s*([\\s\\S]*?)(?:\\n|$)`, 'i')
+
+  const statusMatch  = text.match(statusRegex)
+  const contentMatch = text.match(contentRegex)
+
+  if (statusMatch) {
+    const workflowStatus = statusMatch[1].toLowerCase().trim()
+
+    let reportContent = ''
+    if (contentMatch) {
+      const raw = contentMatch[1].trim()
+      // "null"、空字符串均视为无内容
+      reportContent = (raw === 'null' || raw === '') ? '' : raw
+    }
+
+    console.log(
+      `📊 [task.js] 解析工作流 answer →`,
+      `status="${workflowStatus}"`,
+      `contentEmpty=${!reportContent}`
+    )
+    return { workflowStatus, reportContent }
+  }
+
+  // 没有匹配到"状态"关键词 → 整段文本是正常的报告正文
+  return { workflowStatus: 'success', reportContent: text }
+}
+
+/**
+ * 生成无任务数据时的兜底报告内容（Markdown 格式）
+ * 当工作流返回 status=failed 且大模型报告内容为空时调用
+ * @param {string} startDate - 开始日期
+ * @param {string} endDate - 结束日期
+ * @returns {string} Markdown 内容
+ */
+export function generateEmptyReportContent(startDate, endDate) {
+  return `# ${startDate} - ${endDate} 复盘报告
+
+## 执行摘要
+
+在 **${startDate}** 至 **${endDate}** 期间，系统未检测到任何任务数据。本周期内暂无可用于分析的任务记录。
+
+---
+
+## 📭 本周期无任务数据
+
+| 指标 | 数值 |
+|------|------|
+| 总任务数 | 0 |
+| 已完成任务 | 0 |
+| 进行中任务 | 0 |
+| 已过期任务 | 0 |
+| 完成率 | — |
+| 准时完成率 | — |
+
+---
+
+## 可能的原因
+
+- 该时间段内未添加任何待办任务
+- 任务数据尚未同步至系统
+- 时间范围设置与实际任务创建时间不匹配
+
+---
+
+## 改进建议
+
+1. **养成记录习惯**：尝试每天开始前将当日计划录入系统，帮助追踪进度
+2. **回顾时间范围**：如有任务但未显示，可调整统计时间维度重新生成报告
+3. **设置周期目标**：在新的周期开始时，为自己设定明确的任务目标，以便后续复盘
+
+---
+
+> 💡 开始记录你的第一个任务，下次复盘将呈现完整的数据分析与洞察报告。`;
+}
+
+/**
  * 同步生成任务复盘报告
- * 直接等待 Bot 返回 Markdown 格式报告内容
- * @param {Object} params - 请求参数
- * @param {string} params.user_id - 用户ID
- * @param {string} params.start_date - 开始日期(YYYY-MM-DD)
- * @param {string} params.end_date - 结束日期(YYYY-MM-DD)
- * @param {string} params.title - 报告标题（可选）
- * @returns {Promise<{ content: string, title: string }>} Markdown 格式的报告内容
+ *
+ * ★ 工作流 status 字段说明：
+ *   Coze 工作流 returnVariables 模式下，输出变量被拼入 answer 文本，
+ *   实际观测到两种格式（冒号类型不固定）：
+ *
+ *   格式 A（半角冒号）：
+ *     "状态: failed\n报告内容: null"
+ *
+ *   格式 B（全角冒号 + 列表前缀）：
+ *     "报告生成失败，具体信息如下：\n- 状态：failed\n- 报告内容：null"
+ *
+ *   当 status === 'failed' 且 reportContent 为空时，
+ *   自动填充兜底 Markdown 报告，返回 isEmpty=true。
+ *
+ * @param {Object} params
+ * @param {string} params.user_id
+ * @param {string} params.start_date
+ * @param {string} params.end_date
+ * @param {string} [params.title]
+ * @returns {Promise<{ content: string, title: string, status: string, isEmpty: boolean }>}
  */
 export async function generateReport(params) {
   console.log('📄 [task.js] 开始同步生成报告', params);
@@ -384,13 +493,31 @@ export async function generateReport(params) {
 
   try {
     const response = await callCozeBot(query, params.user_id);
-    console.log('✅ [task.js] 报告生成成功');
+    console.log('✅ [task.js] Bot 调用成功');
 
-    const content = response.content || '';
+    // 解析 answer 文本，兼容全角/半角冒号、带列表前缀等所有已观测格式
+    const { workflowStatus, reportContent } = parseWorkflowAnswerText(response.content || '')
+
+    // 触发条件：status === 'failed'  且  大模型内容为空
+    const isFailed       = workflowStatus === 'failed'
+    const isContentEmpty = !reportContent || reportContent.trim().length === 0
+    const isEmpty        = isFailed && isContentEmpty
+
+    console.log(
+      `📊 [task.js] status="${workflowStatus}"`,
+      `| contentEmpty=${isContentEmpty}`,
+      `| isEmpty(兜底)=${isEmpty}`
+    )
+
+    const finalContent = isEmpty
+      ? generateEmptyReportContent(params.start_date, params.end_date)
+      : reportContent
 
     return {
-      content,
-      title: params.title || `复盘报告_${params.start_date}_${params.end_date}`
+      content : finalContent,
+      title   : params.title || `复盘报告_${params.start_date}_${params.end_date}`,
+      status  : workflowStatus,
+      isEmpty
     };
   } catch (error) {
     console.error('❌ [task.js] 生成报告失败:', error);
@@ -465,6 +592,7 @@ export default {
   updateTaskStatus,
   countTasks,
   generateReport,
+  generateEmptyReportContent,
   parseTaskListFromResponse,
   formatTaskData
 };

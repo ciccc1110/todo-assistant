@@ -216,15 +216,6 @@
           </div>
         </div>
 
-        <!-- 搜索 -->
-        <div class="log-search" v-if="reportLogs.length > 0">
-          <el-input v-model="logSearch" placeholder="搜索报告标题或内容摘要..." clearable size="small">
-            <template #prefix><el-icon>
-                <Search />
-              </el-icon></template>
-          </el-input>
-        </div>
-
         <!-- 空状态 -->
         <div v-if="reportLogs.length === 0" class="log-empty">
           <div class="log-empty-icon">📭</div>
@@ -238,11 +229,13 @@
         <!-- 日志列表 -->
         <div v-else class="log-list">
           <transition-group name="log-item-anim">
-            <div v-for="log in filteredLogs" :key="log.id" class="log-card">
+            <div v-for="log in filteredLogs" :key="log.id" class="log-card"
+              :class="{ 'log-card--empty': log.isEmpty }">
               <div class="log-card-top">
                 <span class="log-card-badge">
                   <span class="badge-dot"></span>{{ log.dateRange }}
                 </span>
+                <span v-if="log.isEmpty" class="log-empty-badge">无数据</span>
                 <span class="log-card-time">{{ log.createdAt }}</span>
               </div>
               <div class="log-card-title">{{ log.title }}</div>
@@ -348,7 +341,6 @@ const customDateRange = ref([])
 //  数据结构: [{ id, title, dateRange, createdAt, preview, markdown }]
 // ════════════════════════════════════════════════════════════════
 const logDrawerVisible = ref(false)
-const logSearch = ref('')
 const reportLogs = ref([])
 const MAX_LOGS = 20
 
@@ -381,7 +373,7 @@ function saveLogsToStorage() {
 }
 
 /** 新增一条日志 */
-function addLog(title, dateRange, genTime, markdown) {
+function addLog(title, dateRange, genTime, markdown, isEmpty = false) {
   const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   // 去除 Markdown 语法符号，提取纯文本摘要
   const preview = markdown
@@ -390,7 +382,7 @@ function addLog(title, dateRange, genTime, markdown) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120)
-  reportLogs.value.unshift({ id, title, dateRange, createdAt: genTime, preview, markdown })
+  reportLogs.value.unshift({ id, title, dateRange, createdAt: genTime, preview, markdown, isEmpty })
   if (reportLogs.value.length > MAX_LOGS) {
     reportLogs.value = reportLogs.value.slice(0, MAX_LOGS)
   }
@@ -398,15 +390,7 @@ function addLog(title, dateRange, genTime, markdown) {
 }
 
 /** 搜索过滤后的日志列表 */
-const filteredLogs = computed(() => {
-  const kw = logSearch.value.trim().toLowerCase()
-  if (!kw) return reportLogs.value
-  return reportLogs.value.filter(l =>
-    l.title.toLowerCase().includes(kw) ||
-    l.dateRange.toLowerCase().includes(kw) ||
-    l.preview.toLowerCase().includes(kw)
-  )
-})
+const filteredLogs = computed(() =>  reportLogs.value)
 
 // ── 日志操作 ─────────────────────────────────────────────────────
 
@@ -749,23 +733,36 @@ async function handleGenerateReport() {
     await new Promise(r => setTimeout(r, 400))
     reportLoadingVisible.value = false
 
-    if (!result?.content) { ElMessage.error('报告内容为空，请稍后重试'); return }
+    // ★ 说明：当工作流 status=failed 且大模型内容为空时，
+    //   task.js 的 generateReport 已自动填充兜底报告到 result.content，
+    //   并将 result.isEmpty 置为 true。
+    //   此处只需处理 content 彻底为空（非兜底）的异常情况。
+    if (!result?.content) {
+      ElMessage.error('报告内容为空，请稍后重试')
+      return
+    }
 
-    const genTime = new Date().toLocaleString('zh-CN')
+    const genTime   = new Date().toLocaleString('zh-CN')
     const dateRange = `${startDate} 至 ${endDate}`
 
     // 更新当前展示状态
-    currentMarkdown.value = result.content
-    renderedMarkdown.value = parseMarkdown(result.content)
-    currentReportTitle.value = title
+    currentMarkdown.value        = result.content
+    renderedMarkdown.value       = parseMarkdown(result.content)
+    currentReportTitle.value     = title
     currentReportDateRange.value = dateRange
-    currentReportGenTime.value = genTime
+    currentReportGenTime.value   = genTime
 
-    // ★ 自动写入报告日志
-    addLog(title, dateRange, genTime, result.content)
+    // ★ 写入日志时同步传入 isEmpty 标记
+    addLog(title, dateRange, genTime, result.content, result.isEmpty ?? false)
 
     reportContentVisible.value = true
-    ElMessage.success('报告生成成功，已自动保存至报告日志！')
+
+    // ★ 差异化提示：无数据兜底 vs 正常报告
+    if (result.isEmpty) {
+      ElMessage.warning('该时间段内暂无任务数据，已生成兜底报告并保存至日志。')
+    } else {
+      ElMessage.success('报告生成成功，已自动保存至报告日志！')
+    }
   } catch (err) {
     console.error('❌ 生成报告失败:', err)
     stopLoadingAnimation(false)
@@ -1607,10 +1604,6 @@ onUnmounted(() => {
   }
 }
 
-.log-search {
-  padding: 14px 16px 0;
-  flex-shrink: 0;
-}
 
 .log-empty {
   flex: 1;
@@ -1777,6 +1770,39 @@ onUnmounted(() => {
 .log-item-anim-leave-to {
   opacity: 0;
   transform: translateX(24px);
+}
+
+/* 无数据兜底报告徽章 */
+.log-empty-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fff7e6;
+  color: #d46b08;
+  border: 1px solid #ffd591;
+}
+
+/* 无数据卡片整体降低饱和度 */
+.log-card--empty {
+  opacity: 0.85;
+  border-color: #ffe7ba;
+
+  &:hover {
+    border-color: #ffc069;
+    box-shadow: 0 4px 16px rgba(250, 140, 22, 0.12);
+  }
+
+  .log-card-badge {
+    background: #fff7e6;
+    color: #d46b08;
+
+    .badge-dot {
+      background: #fa8c16;
+    }
+  }
 }
 
 @keyframes spin {

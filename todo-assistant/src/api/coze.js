@@ -3,9 +3,9 @@ import request from '@/utils/request'
 // Coze Bot 配置
 
 const COZE_CONFIG = {
-  bot_id: '7610285463999381558',  // 你的Bot ID
+  bot_id: '7610285463999381558',  
   api_url: 'https://api.coze.cn/open_api/v2/chat',
-  api_key: 'pat_ek2yIAeokxcXfAnyrIKc46sOrDPY7n8FNdtwBTho9yTOlvzDHn0hMJbR2bHWjMWo'  // ← 在这里填入你的真实API密钥
+  api_key: 'pat_v6lP8kvUCmFQ4JByymXbdEy04aRQA1AjiOZU3dpeUvdHkNftFn2OcO3FbnuV7AAl' 
 }
 
 
@@ -121,7 +121,9 @@ export async function callCozeBot(query, userId = 'user_default', conversationId
         task: extractTask(messages),
         quickQuestions: [],
         quickButtons: [],
-        conversation_id: response.conversation_id // 保存 conversation_id
+        conversation_id: response.conversation_id, // 保存 conversation_id
+        // ★ 新增：透传原始消息列表，供调用方提取工作流输出变量（如 status）
+        rawMessages: messages
       }
 
       console.log('解析后的Bot响应:', botResponse)
@@ -221,6 +223,50 @@ function extractTask(messages) {
   }
 
   return null
+}
+
+/**
+ * 从工作流 verbose 消息中提取输出变量
+ * Coze API v2 中，工作流的 returnVariables 输出变量会以 verbose 类型的消息返回，
+ * content 为包含所有输出字段的 JSON 字符串。
+ * @param {Array} messages - 原始消息列表
+ * @returns {Object} 工作流输出变量键值对，如 { status: 'failed', report_content: '' }
+ */
+export function extractWorkflowOutputs(messages) {
+  if (!messages || messages.length === 0) return {}
+
+  // verbose 消息携带工作流节点的输出，content 为 JSON 字符串
+  for (const msg of messages) {
+    if (msg.type === 'verbose' && msg.content) {
+      try {
+        const parsed = JSON.parse(msg.content)
+        // Coze verbose 消息结构：{ output: { ... } } 或直接是输出对象
+        const outputs = parsed?.output ?? parsed
+        if (outputs && typeof outputs === 'object') {
+          console.log('📦 从 verbose 消息提取工作流输出:', outputs)
+          return outputs
+        }
+      } catch (e) {
+        // 非 JSON，跳过
+      }
+    }
+  }
+
+  // 如果没有 verbose 消息，尝试从 follow_up 类型消息中找
+  for (const msg of messages) {
+    if (msg.type === 'follow_up' && msg.content) {
+      try {
+        const parsed = JSON.parse(msg.content)
+        if (parsed && typeof parsed === 'object') {
+          return parsed
+        }
+      } catch (e) {
+        // 非 JSON，跳过
+      }
+    }
+  }
+
+  return {}
 }
 
 /**
