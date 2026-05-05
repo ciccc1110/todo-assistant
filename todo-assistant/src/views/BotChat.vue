@@ -18,15 +18,13 @@
           <el-icon><DataAnalysis /></el-icon>
           统计看板
         </el-button>
-        <!-- 【可扩展】自动登录模式下隐藏退出按钮；恢复多用户登录后取消注释 -->
-        <!-- <el-button text @click="handleLogout" type="danger">退出</el-button> -->
       </div>
     </div>
 
     <!-- 对话历史区域 -->
     <div class="chat-container" ref="chatContainer">
-      <div 
-        v-for="message in chatStore.messages" 
+      <div
+        v-for="message in chatStore.messages"
         :key="message.id"
         :class="['message', message.role === 'user' ? 'user-message' : 'bot-message']"
       >
@@ -38,8 +36,8 @@
 
           <!-- Bot快捷问题 -->
           <div v-if="message.quickQuestions && message.quickQuestions.length" class="quick-questions">
-            <div 
-              v-for="(question, index) in message.quickQuestions" 
+            <div
+              v-for="(question, index) in message.quickQuestions"
               :key="index"
               class="quick-question"
               @click="handleQuickQuestion(question)"
@@ -47,8 +45,6 @@
               {{ question }}
             </div>
           </div>
-
-
         </div>
       </div>
 
@@ -62,16 +58,16 @@
     </div>
 
     <!-- 固定快捷提问栏 -->
-  <div class="quick-questions-bar">
-    <div 
-      v-for="(question, index) in quickQuestions" 
-      :key="index"
-      class="quick-question-btn"
-      @click="handleQuickQuestion(question)"
-    >
-      {{ question }}
+    <div class="quick-questions-bar">
+      <div
+        v-for="(question, index) in quickQuestions"
+        :key="index"
+        class="quick-question-btn"
+        @click="handleQuickQuestion(question)"
+      >
+        {{ question }}
+      </div>
     </div>
-  </div>
 
     <!-- 输入区域 -->
     <div class="input-area">
@@ -94,170 +90,139 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
-import { useChatStore } from '@/stores/chat';
-import { useUserStore } from '@/stores/user';
-import { callCozeBot } from '@/api/coze';
-import { ElMessage } from 'element-plus';
-import { List, DataAnalysis } from '@element-plus/icons-vue';
+import { ref, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import { useChatStore } from '@/stores/chat'
+import { useUserStore } from '@/stores/user'
+import { useTaskStore } from '@/stores/task'
+import { callCozeBot } from '@/api/coze'
+import { ElMessage } from 'element-plus'
+import { List, DataAnalysis } from '@element-plus/icons-vue'
 
+// ★ 新增：缓存失效工具 + 意图检测工具
+import { invalidateTaskCache } from '@/utils/taskCache'
+import { isTaskMutation } from '@/utils/taskIntent'
 
-const router = useRouter();
-const chatStore = useChatStore();
-const userStore = useUserStore();
-const inputMessage = ref('');
-const chatContainer = ref(null);
-const isLoading = ref(false);
+const router = useRouter()
+const chatStore = useChatStore()
+const userStore = useUserStore()
+const taskStore = useTaskStore()
+
+const inputMessage = ref('')
+const chatContainer = ref(null)
+const isLoading = ref(false)
 const conversationId = ref(null)
 const quickQuestions = ref(['今天有什么待办任务?', '查看所有任务', '明天任务'])
 
-
-// 格式化消息内容（将换行符转换为 <br> 标签）
+// 格式化消息内容
 const formatMessage = (content) => {
-  if (!content) return '';
-  // 将换行符 \n 转换为 <br> 标签
-  return content.replace(/\n/g, '<br>');
-};
+  if (!content) return ''
+  return content.replace(/\n/g, '<br>')
+}
 
 // 发送消息
 const sendMessage = async () => {
-  if (!inputMessage.value.trim() || isLoading.value) return;
+  if (!inputMessage.value.trim() || isLoading.value) return
 
-  const message = inputMessage.value;
-  inputMessage.value = '';
+  const message = inputMessage.value
+  inputMessage.value = ''
 
-  // 先添加用户消息到界面
-  chatStore.addUserMessage(message);
-  await scrollToBottom();
+  chatStore.addUserMessage(message)
+  await scrollToBottom()
 
-  isLoading.value = true;
+  isLoading.value = true
 
   try {
-    console.log('========== 开始调用Bot API... ==========');
-    const botResponse = await callCozeBot(message, userStore.userId, conversationId.value);
-    console.log('Bot响应:', botResponse);
+    console.log('========== 开始调用Bot API... ==========')
+    const botResponse = await callCozeBot(message, userStore.userId, conversationId.value)
+    console.log('Bot响应:', botResponse)
 
     if (botResponse.conversation_id) {
-      conversationId.value = botResponse.conversation_id;
+      conversationId.value = botResponse.conversation_id
     }
 
-    // 添加Bot回复到界面
+    const replyContent = botResponse.content || '抱歉，我没有理解您的话。'
+
     chatStore.addBotMessage(
-      botResponse.content || '抱歉，我没有理解您的话。',
+      replyContent,
       botResponse.quickQuestions || [],
       botResponse.quickButtons || []
-    );
+    )
 
-    await scrollToBottom();
+    // ★检测是否是任务操作，若是则让缓存失效
+    if (isTaskMutation(message, replyContent)) {
+      invalidateTaskCache(userStore.userId)
+      // 同时重置 taskStore 的已加载标志，确保页面重新拉取
+      taskStore.dataLoaded = false
+      console.log('✅ 检测到任务变更，缓存已清除，切换页面将重新加载数据')
+    }
+
+    await scrollToBottom()
   } catch (error) {
-    console.error('发送失败:', error);
-    ElMessage.error(error.message || '发送失败,请稍后重试');
-    
-    // 添加错误提示到对话界面
-    chatStore.addBotMessage(`抱歉，发生了错误：${error.message}`);
-    await scrollToBottom();
+    console.error('发送失败:', error)
+    ElMessage.error(error.message || '发送失败，请稍后重试')
+    chatStore.addBotMessage(`抱歉，发生了错误：${error.message}`)
+    await scrollToBottom()
   } finally {
-    isLoading.value = false;
-    console.log('========== 消息处理完成 ==========');
+    isLoading.value = false
+    console.log('========== 消息处理完成 ==========')
   }
-};
+}
 
 // 点击快捷提问
 const handleQuickQuestion = async (question) => {
-  if (isLoading.value) return;
-  inputMessage.value = question;
-  await sendMessage();
-};
-
-
+  if (isLoading.value) return
+  inputMessage.value = question
+  await sendMessage()
+}
 
 // 处理清屏
 const handleClearChat = () => {
   if (confirm('确定要清空当前对话记录吗？（数据会保留，仅清空对话界面）')) {
-    chatStore.clearMessages();
-    conversationId.value = null;
-    // 重新显示欢迎消息
-    chatStore.addBotMessage(
-      '🌟 欢迎使用「小安同学」—— 您的智能待办管理助手 🌟\n\n' +
-      '我可以帮你：\n' +
-      '📝 智能识别任务 —— 用自然语言来添加、修改、删除任务\n' +
-      '⏰ 贴心提醒 —— 重要事项不再遗漏\n' +
-      '📊 统计分析 —— 随时掌握任务完成情况\n\n' +
-      '试试这样跟我说：\n' +
-      '• "明天下午3点开会"\n'+
-      '• "添加一个任务: 完成毕业设计中期报告"\n'+
-      '• "查看今天的待办任务"\n'+
-      '• "把线上会议时间改为明天早上八点"\n'+
-      '• "删除下午拿快递的任务"\n\n' +
-      '开始你的高效管理之旅吧！🎯',
-      ['今天有什么待办任务?', '查看所有任务', '今日学习任务']
-    );
-    ElMessage.success('对话记录已清空');
-    scrollToBottom();
+    chatStore.clearMessages()
+    conversationId.value = null
+    showWelcomeMessage()
+    ElMessage.success('对话记录已清空')
+    scrollToBottom()
   }
-};
+}
 
+// 欢迎消息
+const showWelcomeMessage = () => {
+  chatStore.addBotMessage(
+    '🌟 欢迎使用「小安同学」—— 您的智能待办管理助手 🌟\n\n' +
+    '我可以帮你：\n' +
+    '📝 智能识别任务 —— 用自然语言来添加、修改、删除任务\n' +
+    '⏰ 贴心提醒 —— 重要事项不再遗漏\n' +
+    '📊 统计分析 —— 随时掌握任务完成情况\n\n' +
+    '试试这样跟我说：\n' +
+    '• "明天下午3点开会"\n' +
+    '• "添加一个任务: 完成毕业设计中期报告"\n' +
+    '• "查看今天的待办任务"\n' +
+    '• "把线上会议时间改为明天早上八点"\n' +
+    '• "删除下午拿快递的任务"\n\n' +
+    '开始你的高效管理之旅吧！🎯',
+    ['今天有什么待办任务?', '查看所有任务', '今日学习任务']
+  )
+}
 
-// 查看全部任务
-const handleViewTasks = () => {
-  router.push('/tasks');
-};
+const handleViewTasks = () => router.push('/tasks')
+const handleViewStatistics = () => router.push('/statistics')
 
-// 查看统计看板
-const handleViewStatistics = () => {
-  router.push('/statistics');
-};
-
-// 退出登录
-// 【可扩展】恢复多用户登录后取消注释
-// const handleLogout = () => {
-//   if (confirm('确定要退出登录吗？')) {
-//     userStore.logout();
-//     ElMessage.success('已退出登录');
-//     router.push('/login');
-//   }
-// };
-
-// 滚动到底部
 const scrollToBottom = async () => {
-  await nextTick();
+  await nextTick()
   if (chatContainer.value) {
-    chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+    chatContainer.value.scrollTop = chatContainer.value.scrollHeight
   }
-};
+}
 
-// 初始化
 onMounted(async () => {
-  // 加载用户信息
-  userStore.loadFromStorage();
-  
-  // 如果没有用户信息，跳转到登录页
- // 【可扩展】自动登录模式下无需检查登录状态，userStore 已由 main.js 自动填充
-// if (!userStore.isLoggedIn) {
-//   router.push('/login');
-//   return;
-// }
-// 如果没有消息,显示欢迎消息
+  userStore.loadFromStorage()
   if (chatStore.messages.length === 0) {
-    chatStore.addBotMessage(
-      '🌟 欢迎使用「小安同学」—— 您的智能待办管理助手 🌟\n\n' +
-      '我可以帮你：\n' +
-      '📝 智能识别任务 —— 用自然语言来添加、修改、删除任务\n' +
-      '⏰ 贴心提醒 —— 重要事项不再遗漏\n' +
-      '📊 统计分析 —— 随时掌握任务完成情况\n\n' +
-      '试试这样跟我说：\n' +
-      '• "明天下午3点开会"\n'+
-      '• "添加一个任务: 完成毕业设计中期报告"\n'+
-      '• "查看今天的待办任务"\n'+
-      '• "把线上会议时间改为明天早上八点"\n'+
-      '• "删除下午拿快递的任务"\n\n' +
-      '开始你的高效管理之旅吧！🎯',
-      ['今天有什么待办任务?', '查看所有任务', '今日学习任务']
-    );
+    showWelcomeMessage()
   }
-  await scrollToBottom();
-});
+  await scrollToBottom()
+})
 </script>
 
 <style scoped lang="scss">
@@ -293,9 +258,7 @@ onMounted(async () => {
       justify-content: center;
       flex-shrink: 0;
 
-      .logo-icon {
-        font-size: 18px;
-      }
+      .logo-icon { font-size: 18px; }
     }
 
     .title {
@@ -305,10 +268,7 @@ onMounted(async () => {
     }
   }
 
-  .header-right {
-    display: flex;
-    gap: 8px;
-  }
+  .header-right { display: flex; gap: 8px; }
 }
 
 .chat-container {
@@ -357,10 +317,7 @@ onMounted(async () => {
         white-space: pre-wrap;
       }
 
-      .loading {
-        color: #909399;
-        font-size: 14px;
-      }
+      .loading { color: #909399; font-size: 14px; }
 
       .quick-questions {
         display: flex;
@@ -385,8 +342,6 @@ onMounted(async () => {
           }
         }
       }
-
-
     }
   }
 
@@ -445,11 +400,9 @@ onMounted(async () => {
   }
 }
 
-
 .input-area {
   background-color: #FFFFFF;
   padding: 16px 20px;
-  // border-top: 1px solid #E4E7ED;
   border-top: none;
   display: flex;
   align-items: center;
@@ -483,10 +436,7 @@ onMounted(async () => {
         box-shadow: none;
         border: 1px solid #DCDFE6;
 
-        &:hover {
-          border-color: #409EFF;
-        }
-
+        &:hover { border-color: #409EFF; }
         &.is-focus {
           border-color: #409EFF;
           box-shadow: 0 0 0 1px #409EFF;
@@ -518,14 +468,10 @@ onMounted(async () => {
         color: white;
       }
 
-      &:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
+      &:disabled { opacity: 0.5; cursor: not-allowed; }
     }
   }
 }
-
 
 .user-info {
   display: flex;
@@ -539,21 +485,11 @@ onMounted(async () => {
   border-radius: 20px;
   margin-right: 8px;
 
-  &::before {
-    content: '👤';
-    font-size: 16px;
-  }
+  &::before { content: '👤'; font-size: 16px; }
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 </style>
-                                                                                                                                                                                                                                           

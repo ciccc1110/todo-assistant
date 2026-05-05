@@ -9,6 +9,12 @@
         <div class="title">统计看板</div>
       </div>
       <div class="header-right">
+        <transition name="fade">
+          <span v-if="isBackgroundRefreshing" class="refreshing-badge">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            同步中...
+          </span>
+        </transition>
         <div class="user-info">{{ userStore.userName }}</div>
         <el-button text @click="handleRefresh"><el-icon>
             <Refresh />
@@ -229,8 +235,7 @@
         <!-- 日志列表 -->
         <div v-else class="log-list">
           <transition-group name="log-item-anim">
-            <div v-for="log in filteredLogs" :key="log.id" class="log-card"
-              :class="{ 'log-card--empty': log.isEmpty }">
+            <div v-for="log in filteredLogs" :key="log.id" class="log-card" :class="{ 'log-card--empty': log.isEmpty }">
               <div class="log-card-top">
                 <span class="log-card-badge">
                   <span class="badge-dot"></span>{{ log.dateRange }}
@@ -289,6 +294,7 @@
 </template>
 
 <script setup>
+import { cacheFirstLoad, invalidateTaskCache, saveTaskCache, loadTaskCache } from '@/utils/taskCache'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useTaskStore } from '@/stores/task'
 import { useUserStore } from '@/stores/user'
@@ -326,6 +332,7 @@ const currentReportGenTime = ref('')
 const currentMarkdown = ref('')
 const renderedMarkdown = ref('')
 
+const isBackgroundRefreshing = ref(false)  // ★ 新增
 // Loading 动画
 const loadingStep = ref(1)
 const loadingProgress = ref(0)
@@ -390,7 +397,7 @@ function addLog(title, dateRange, genTime, markdown, isEmpty = false) {
 }
 
 /** 搜索过滤后的日志列表 */
-const filteredLogs = computed(() =>  reportLogs.value)
+const filteredLogs = computed(() => reportLogs.value)
 
 // ── 日志操作 ─────────────────────────────────────────────────────
 
@@ -742,15 +749,15 @@ async function handleGenerateReport() {
       return
     }
 
-    const genTime   = new Date().toLocaleString('zh-CN')
+    const genTime = new Date().toLocaleString('zh-CN')
     const dateRange = `${startDate} 至 ${endDate}`
 
     // 更新当前展示状态
-    currentMarkdown.value        = result.content
-    renderedMarkdown.value       = parseMarkdown(result.content)
-    currentReportTitle.value     = title
+    currentMarkdown.value = result.content
+    renderedMarkdown.value = parseMarkdown(result.content)
+    currentReportTitle.value = title
     currentReportDateRange.value = dateRange
-    currentReportGenTime.value   = genTime
+    currentReportGenTime.value = genTime
 
     // ★ 写入日志时同步传入 isEmpty 标记
     addLog(title, dateRange, genTime, result.content, result.isEmpty ?? false)
@@ -858,19 +865,56 @@ function getCurrentDateRange() {
 
 // ── API 数据加载 ──────────────────────────────────────────────────
 async function loadTasksFromAPI() {
-  loading.value = true
-  try {
-    const data = await getTaskList({}, userStore.userId)
-    taskStore.tasks = data.map(t => ({
-      id: String(t.id), title: t.task_content, description: t.description || '',
-      category: t.category || '其他', importance: t.importance || '中',
-      deadline: t.deadline || null, status: t.status || '进行中',
+  // 格式化原始 API 数据为 taskStore 所需格式
+  const formatForStore = (rawList) =>
+    rawList.map(t => ({
+      id: String(t.id),
+      title: t.task_content,
+      description: t.description || '',
+      category: t.category || '其他',
+      importance: t.importance || '中',
+      deadline: t.deadline || null,
+      status: t.status || '进行中',
       createdAt: t.created_at || new Date().toISOString(),
       updatedAt: t.updated_at || t.created_at || new Date().toISOString(),
       completedAt: t.completed_at || null
     }))
-  } catch (err) { ElMessage.error('加载任务数据失败：' + err.message) }
-  finally { loading.value = false }
+
+  await cacheFirstLoad({
+    userId: userStore.userId,
+
+    // 命中缓存：立即渲染图表，用户无感知延迟
+    onCacheHit: (cached) => {
+      taskStore.tasks = formatForStore(cached)
+      loading.value = false
+      isBackgroundRefreshing.value = true   // 显示顶部小提示
+      // 立即刷新图表（基于缓存数据）
+      setTimeout(refreshCharts, 100)
+    },
+
+    // 实际 API 请求
+    fetchFn: () => getTaskList({}, userStore.userId),
+
+    // 新数据回来：静默更新图表
+    onFetched: (freshData) => {
+      taskStore.tasks = formatForStore(freshData)
+      loading.value = false
+      isBackgroundRefreshing.value = false
+      // 用新数据重新渲染图表（用户几乎感知不到）
+      refreshCharts()
+    },
+
+    // 错误处理
+    onError: (err) => {
+      loading.value = false
+      isBackgroundRefreshing.value = false
+      if (taskStore.tasks.length === 0) {
+        ElMessage.error('加载任务数据失败：' + err.message)
+      } else {
+        ElMessage.warning('后台数据同步失败，当前显示缓存数据')
+      }
+    }
+  })
 }
 
 // ── 图表 ─────────────────────────────────────────────────────────
@@ -944,7 +988,15 @@ function refreshCharts() { initTrendChart(); initCategoryChart(); initPriorityCh
 function handleTimeDimensionChange() { refreshCharts() }
 function handleCustomDateChange() { refreshCharts() }
 function handleResetCustomDate() { customDateRange.value = []; refreshCharts(); ElMessage.success('筛选条件已重置') }
-function handleRefresh() { loadTasksFromAPI().then(() => { refreshCharts(); ElMessage.success('数据已刷新') }) }
+function handleRefresh() {
+  invalidateTaskCache(userStore.userId)   // ★ 清除缓存，强制重新请求
+  loading.value = true
+  loadTasksFromAPI().then(() => {
+    refreshCharts()
+    ElMessage.success('数据已刷新')
+  })
+}
+
 function handleViewTasks() { router.push('/tasks') }
 function handleViewChat() { router.push('/chat') }
 // 【可扩展】恢复多用户登录后取消注释
@@ -960,12 +1012,13 @@ function handleResize() { trendChartInstance?.resize(); categoryChartInstance?.r
 onMounted(() => {
   userStore.loadFromStorage()
   // 【可扩展】自动登录模式下无需检查登录状态，userStore 已由 main.js 自动填充
-// if (!userStore.isLoggedIn) {
-//   router.push('/login');
-//   return;
-// }
-  loadLogsFromStorage()   // ★ 加载日志
-  loadTasksFromAPI().then(() => { setTimeout(refreshCharts, 300) })
+  // if (!userStore.isLoggedIn) {
+  //   router.push('/login');
+  //   return;
+  // }
+  loadLogsFromStorage()
+  loading.value = true   // ← 补上，无缓存时显示全屏 loading
+  loadTasksFromAPI()     // 内部已处理图表刷新，不需要 .then
   window.addEventListener('resize', handleResize)
 })
 
@@ -1810,6 +1863,22 @@ onUnmounted(() => {
     transform: rotate(360deg);
   }
 }
+
+.refreshing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #409EFF;
+  background: #ecf5ff;
+  border: 1px solid #b3d8ff;
+  border-radius: 20px;
+  padding: 4px 12px;
+  margin-right: 8px;
+}
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
+.fade-enter-from, .fade-leave-to       { opacity: 0; }
 
 @keyframes rotating {
   from {
