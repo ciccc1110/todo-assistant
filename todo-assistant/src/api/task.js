@@ -12,8 +12,8 @@ import { callCozeBot } from './coze';
  * 查询任务列表
  * @param {Object} filters - 筛选条件
  * @param {string} filters.date - 日期筛选
- * @param {string} filters.status - 状态筛选：'进行中' | '已完成' | ''
- * @param {string} filters.category - 分类筛选：'工作' | '学习' | '生活' | '其他' | ''
+ * @param {string} filters.status - 状态筛选：'进行中' | '已完成' | '已过期' | '已取消' | ''
+ * @param {string} filters.category - 分类筛选：'工作' | '学习' | '生活' | '出行' | '其他' | ''
  * @param {string} filters.importance - 优先级筛选：'高' | '中' | '低' | ''
  * @param {string} filters.keyword - 关键词搜索
  * @param {string} userId - 用户ID（默认为 'user_default'）

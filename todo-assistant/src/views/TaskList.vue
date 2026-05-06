@@ -175,12 +175,79 @@
               <el-button class="edit-btn" text type="primary" size="small" @click="handleEditTask(task)">
                 <el-icon><Edit /></el-icon>编辑
               </el-button>
-              <el-button text type="danger" size="small" @click="handleDeleteTask(task)">
+              <el-button text type="danger" size="small" @click="handleCancelTask(task)">
                 <el-icon><Delete /></el-icon>删除
               </el-button>
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- ══════════ 已取消任务入口 ══════════ -->
+      <div v-if="!isFirstLoading" class="cancelled-section">
+        <div class="cancelled-divider" @click="toggleCancelledSection">
+          <div class="cancelled-divider-line"></div>
+          <div class="cancelled-divider-btn" :class="{ 'is-expanded': showCancelledTasks }">
+            <el-icon class="cancelled-icon"><CircleClose /></el-icon>
+            <span>查看已取消任务</span>
+            <el-badge v-if="cancelledTasks.length > 0" :value="cancelledTasks.length" type="info" class="cancelled-badge" />
+            <el-icon class="toggle-arrow">
+              <component :is="showCancelledTasks ? 'ArrowUp' : 'ArrowDown'" />
+            </el-icon>
+          </div>
+          <div class="cancelled-divider-line"></div>
+        </div>
+
+        <!-- 已取消任务列表（展开后显示） -->
+        <transition name="cancelled-slide">
+          <div v-if="showCancelledTasks" class="cancelled-content">
+            <div v-if="cancelledTasks.length === 0" class="cancelled-empty">
+              <el-icon><CircleCheck /></el-icon>
+              <span>暂无已取消的任务</span>
+            </div>
+            <div v-else>
+              <div class="cancelled-hint">
+                <el-icon><InfoFilled /></el-icon>
+                以下 {{ cancelledTasks.length }} 项任务已被取消
+              </div>
+              <div class="task-list-container cancelled-list">
+                <div v-for="task in cancelledTasks" :key="task.id" class="task-card task-cancelled">
+                  <div class="task-header">
+                    <div class="task-priority" :class="getPriorityClass(task.importance)">
+                      {{ task.importance }}
+                    </div>
+                    <div class="task-category">{{ task.category }}</div>
+                    <div class="task-status">
+                      <el-tag type="info" size="small">已取消</el-tag>
+                    </div>
+                  </div>
+
+                  <div class="task-body">
+                    <div class="task-content-text">{{ task.task_content }}</div>
+                    <div v-if="task.description" class="task-description">{{ task.description }}</div>
+                  </div>
+
+                  <div class="task-footer">
+                    <div class="task-deadline" v-if="task.deadline">
+                      <el-icon><Clock /></el-icon>
+                      截止: {{ formatDeadline(task.deadline) }}
+                    </div>
+                    <div v-else class="task-deadline-empty">
+                      <el-icon><Warning /></el-icon>
+                      <span>未设置截止时间</span>
+                    </div>
+                    <div class="task-actions">
+                      <el-button text type="primary" size="small" @click="handleRestoreTask(task)">
+                        <el-icon><RefreshLeft /></el-icon>
+                        恢复任务
+                      </el-button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
 
@@ -237,9 +304,9 @@
     </el-dialog>
 
     <!-- 操作遮罩 -->
-    <div v-if="editSaving || isDeleting || isToggling" class="edit-mask">
+    <div v-if="editSaving || isCancelling || isToggling || isRestoring" class="edit-mask">
       <el-icon class="is-loading" :size="40"><Loading /></el-icon>
-      <span>{{ isDeleting ? '正在删除任务...' : isToggling ? '正在更新状态...' : '正在处理...' }}</span>
+      <span>{{ isCancelling ? '正在删除任务...' : isToggling ? '正在更新状态...' : isRestoring ? '正在恢复任务...' : '正在处理...' }}</span>
     </div>
   </div>
 </template>
@@ -248,12 +315,12 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { getTaskList, updateTask, deleteTask } from '@/api/task'
+import { getTaskList, updateTask } from '@/api/task'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Refresh, ChatDotRound, Search, Loading, DocumentCopy,
   Edit, Delete, Clock, CircleCheck, RefreshLeft, DataAnalysis,
-  Warning, Sort, Close
+  Warning, Sort, Close, CircleClose, ArrowUp, ArrowDown, InfoFilled
 } from '@element-plus/icons-vue'
 
 // ★ 引入缓存工具
@@ -263,10 +330,13 @@ const router = useRouter()
 const userStore = useUserStore()
 
 // ★ 区分"首次加载（无缓存）"和"后台刷新"两种状态
-const isFirstLoading = ref(false)          // 无缓存时的全屏 loading
-const isBackgroundRefreshing = ref(false)  // 有缓存时的静默后台刷新提示
+const isFirstLoading = ref(false)
+const isBackgroundRefreshing = ref(false)
 
 const tasks = ref([])
+
+// ★ 已取消任务面板展开状态
+const showCancelledTasks = ref(false)
 
 const filters = reactive({
   status: '', importance: '', category: '', keyword: '', date: ''
@@ -312,9 +382,16 @@ function getSortHintText(order) {
   return ''
 }
 
-// ── 筛选 + 排序 computed ─────────────────────────────────────────
+// ── ★ 已取消任务单独分离 ────────────────────────────────────────
+const cancelledTasks = computed(() =>
+  tasks.value.filter(t => t.status === '已取消')
+)
+
+// ── 筛选 + 排序 computed（排除已取消） ──────────────────────────
 const filteredTasks = computed(() => {
-  let result = tasks.value
+  // 主列表始终过滤掉「已取消」
+  let result = tasks.value.filter(t => t.status !== '已取消')
+
   if (filters.date) {
     const selected = new Date(filters.date)
     result = result.filter(t => {
@@ -372,6 +449,11 @@ function handleResetFilters() {
   ElMessage.success('筛选条件已重置')
 }
 
+// ── 已取消面板切换 ───────────────────────────────────────────────
+function toggleCancelledSection() {
+  showCancelledTasks.value = !showCancelledTasks.value
+}
+
 // ── 工具函数 ─────────────────────────────────────────────────────
 const formatDeadline = (deadline) => {
   if (!deadline) return ''
@@ -406,16 +488,11 @@ const isExpiredTask = (task) => {
 const loadAllTasks = async () => {
   await cacheFirstLoad({
     userId: userStore.userId,
-
-    // 命中缓存时：立即渲染缓存数据，用户无感知延迟
     onCacheHit: (cached) => {
       tasks.value = cached
       isFirstLoading.value = false
-      // 显示顶部小角标，告知用户后台正在同步
       isBackgroundRefreshing.value = true
     },
-
-    // 实际 API 请求
     fetchFn: () => getTaskList(
       {
         deadline:   filters.date,
@@ -426,15 +503,11 @@ const loadAllTasks = async () => {
       },
       userStore.userId
     ),
-
-    // 新数据回来后：更新视图（用户几乎感知不到刷新）
     onFetched: (freshTasks) => {
       tasks.value = freshTasks
       isFirstLoading.value = false
       isBackgroundRefreshing.value = false
     },
-
-    // 请求失败时（有缓存则静默，无缓存则提示）
     onError: (err) => {
       isFirstLoading.value = false
       isBackgroundRefreshing.value = false
@@ -487,7 +560,6 @@ const handleSaveEdit = async () => {
     if (index !== -1) {
       tasks.value[index] = { ...tasks.value[index], ...editForm }
     }
-    // ★ 编辑成功后同步更新缓存，保证数据一致
     saveTaskCache(userStore.userId, tasks.value)
     editDialogVisible.value = false
     ElMessage.success('任务已更新')
@@ -517,7 +589,6 @@ const handleToggleStatus = async (task) => {
       userStore.userId
     )
     task.status = newStatus
-    // ★ 状态变更后同步缓存
     saveTaskCache(userStore.userId, tasks.value)
     ElMessage.success(newStatus === '已完成' ? '任务已完成' : '任务已标记为进行中')
   } catch (error) {
@@ -527,31 +598,86 @@ const handleToggleStatus = async (task) => {
   }
 }
 
-// ── 删除任务 ─────────────────────────────────────────────────────
-const isDeleting = ref(false)
-const handleDeleteTask = async (task) => {
+// ── ★ 恢复已取消任务 ─────────────────────────────────────────────
+const isRestoring = ref(false)
+const handleRestoreTask = async (task) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要恢复任务"${task.task_content}"为进行中状态吗？`,
+      '恢复确认',
+      { confirmButtonText: '确定恢复', cancelButtonText: '取消', type: 'info' }
+    )
+    isRestoring.value = true
+    await updateTask(
+      {
+        id: task.id, status: '进行中',
+        task_content: task.task_content, category: task.category,
+        importance: task.importance, deadline: task.deadline,
+        description: task.description
+      },
+      userStore.userId
+    )
+    const index = tasks.value.findIndex(t => String(t.id) === String(task.id))
+    if (index !== -1) {
+      tasks.value[index] = { ...tasks.value[index], status: '进行中' }
+    }
+    saveTaskCache(userStore.userId, tasks.value)
+    ElMessage.success('任务已恢复为进行中')
+  } catch (error) {
+    if (error !== 'cancel') ElMessage.error('恢复失败：' + error.message)
+  } finally {
+    isRestoring.value = false
+  }
+}
+
+// ── ★ 取消任务（原"删除"按钮）：立即前端更新，后台异步同步 ────────
+const isCancelling = ref(false)
+const handleCancelTask = async (task) => {
   try {
     await ElMessageBox.confirm(
       `确定要删除任务"${task.task_content}"吗？`,
       '删除确认',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      { confirmButtonText: '确定删除', cancelButtonText: '保留', type: 'warning' }
     )
-    isDeleting.value = true
-    await deleteTask(task.id, userStore.userId)
-    tasks.value = tasks.value.filter(t => t.id !== task.id)
-    // ★ 删除后同步缓存
+
+    // ★ 立即在前端把状态改为"已取消"，用户无需等待 API
+    const index = tasks.value.findIndex(t => String(t.id) === String(task.id))
+    if (index !== -1) {
+      tasks.value[index] = { ...tasks.value[index], status: '已取消' }
+    }
     saveTaskCache(userStore.userId, tasks.value)
     ElMessage.success('任务已删除')
-  } catch (error) {
-    if (error !== 'cancel') ElMessage.error('删除失败：' + error.message)
-  } finally {
-    isDeleting.value = false
+
+    // 后台异步通知服务端
+    isCancelling.value = true
+    try {
+      await updateTask(
+        {
+          id: task.id, status: '已取消',
+          task_content: task.task_content, category: task.category,
+          importance: task.importance, deadline: task.deadline,
+          description: task.description
+        },
+        userStore.userId
+      )
+      saveTaskCache(userStore.userId, tasks.value)
+    } catch (apiErr) {
+      // API 失败则回滚前端状态
+      if (index !== -1) {
+        tasks.value[index] = { ...tasks.value[index], status: task.status }
+      }
+      saveTaskCache(userStore.userId, tasks.value)
+      ElMessage.error('删除失败，已还原：' + apiErr.message)
+    } finally {
+      isCancelling.value = false
+    }
+  } catch (err) {
+    if (err !== 'cancel') ElMessage.error('操作失败：' + err.message)
   }
 }
 
 // ── 导航 ─────────────────────────────────────────────────────────
 const handleRefresh = () => {
-  // 手动刷新：清除缓存，强制重新请求
   invalidateTaskCache(userStore.userId)
   isFirstLoading.value = true
   loadAllTasks()
@@ -563,10 +689,8 @@ const handleViewStatistics  = () => router.push('/statistics')
 // ── 挂载 ─────────────────────────────────────────────────────────
 onMounted(() => {
   userStore.loadFromStorage()
-  userStore.loadFromStorage()
-  // 检查是否有缓存，决定是否显示全屏 loading
   const cached = loadTaskCache(userStore.userId)
-  isFirstLoading.value = !cached   // 有缓存则不显示全屏 loading
+  isFirstLoading.value = !cached
   loadAllTasks()
 })
 </script>
@@ -590,7 +714,6 @@ onMounted(() => {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
 .fade-enter-from, .fade-leave-to       { opacity: 0; }
 
-/* ── 其余样式与原文件完全一致 ── */
 .task-list {
   height: 100vh;
   display: flex;
@@ -741,9 +864,22 @@ onMounted(() => {
 
   &:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, .12); transform: translateY(-3px); }
   &.task-completed { opacity: .5; border-left-color: #C0C6CC; .task-content-text { text-decoration: line-through; color: #909399; } }
-  &.task-high   { border-left-color: #F56C6C; box-shadow: 0 2px 12px rgba(245, 108, 108, .15); }
-  &.task-medium { border-left-color: #E6A23C; box-shadow: 0 2px 12px rgba(230, 162, 60, .15); }
-  &.task-low    { border-left-color: #67C23A; box-shadow: 0 2px 12px rgba(103, 194, 58, .15); }
+  &.task-expired   { border-left-color: #F56C6C; }
+  &.task-high      { border-left-color: #F56C6C; box-shadow: 0 2px 12px rgba(245, 108, 108, .15); }
+  &.task-medium    { border-left-color: #E6A23C; box-shadow: 0 2px 12px rgba(230, 162, 60, .15); }
+  &.task-low       { border-left-color: #67C23A; box-shadow: 0 2px 12px rgba(103, 194, 58, .15); }
+
+  // ★ 已取消任务样式：置灰 + 删除线
+  &.task-cancelled {
+    opacity: 0.6;
+    border-left-color: #C0C6CC;
+    background: #fafafa;
+    &:hover { box-shadow: 0 2px 10px rgba(0, 0, 0, .08); transform: translateY(-1px); }
+    .task-content-text {
+      text-decoration: line-through;
+      color: #909399;
+    }
+  }
 }
 
 .task-header {
@@ -847,6 +983,122 @@ onMounted(() => {
   background: linear-gradient(135deg, #FFF9E6, #FFFBF0);
   border-radius: 6px;
   border-left: 3px solid #E6A23C;
+}
+
+// ══════════ 已取消任务区域 ══════════
+.cancelled-section {
+  margin-top: 32px;
+}
+
+.cancelled-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+
+  &:hover .cancelled-divider-btn {
+    background: #f0f0f5;
+    border-color: #c0c4cc;
+    color: #606266;
+  }
+}
+
+.cancelled-divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #dcdfe6 20%, #dcdfe6 80%, transparent);
+}
+
+.cancelled-divider-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #909399;
+  background: #f5f7fa;
+  border: 1px solid #dcdfe6;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+
+  &.is-expanded {
+    background: #f4f0ff;
+    border-color: #c9b8f5;
+    color: #722ed1;
+
+    .cancelled-icon { color: #722ed1; }
+    .toggle-arrow   { color: #722ed1; }
+  }
+
+  .cancelled-icon { font-size: 16px; color: #909399; }
+  .toggle-arrow   { font-size: 13px; color: #909399; transition: transform 0.25s; }
+}
+
+// badge 覆盖 Element Plus 默认的 display
+:deep(.cancelled-badge) {
+  .el-badge__content {
+    background: #909399;
+    border: none;
+    font-size: 11px;
+  }
+}
+
+.cancelled-content {
+  margin-top: 20px;
+  padding-bottom: 24px;
+}
+
+.cancelled-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #909399;
+  background: #f5f7fa;
+  border: 1px dashed #dcdfe6;
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+
+  .el-icon { color: #c0c4cc; }
+}
+
+.cancelled-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px;
+  color: #c0c4cc;
+  font-size: 14px;
+  background: #fafafa;
+  border-radius: 10px;
+  border: 1px dashed #e4e7ed;
+
+  .el-icon { font-size: 22px; }
+}
+
+.cancelled-list {
+  opacity: 0.85;
+}
+
+// 展开/收起过渡动画
+.cancelled-slide-enter-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+.cancelled-slide-leave-active {
+  transition: all 0.25s ease;
+  overflow: hidden;
+}
+.cancelled-slide-enter-from,
+.cancelled-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 .edit-mask {

@@ -78,6 +78,12 @@
         </div>
       </div>
 
+      <!-- ★ 统计说明提示：仅统计进行中/已完成/已过期 -->
+      <div class="stats-scope-hint">
+        <el-icon><InfoFilled /></el-icon>
+        以下统计仅包含<strong>进行中、已完成、已过期</strong>三种状态的任务，已取消任务不计入。
+      </div>
+
       <!-- 总览卡片 -->
       <div class="overview-cards">
         <StatCard title="总任务数" :value="filteredStats.total" />
@@ -454,7 +460,10 @@ const filteredTasks = computed(() => {
     } else return []
   }
   return taskStore.tasks.filter(t => {
-    const d = new Date(t.createdAt); return d >= startDate && d <= endDate
+    if (t.status === '已取消')
+        return false  // ★ 核心
+    const d = new Date(t.createdAt)
+    return d >= startDate && d <= endDate
   })
 })
 
@@ -867,7 +876,9 @@ function getCurrentDateRange() {
 async function loadTasksFromAPI() {
   // 格式化原始 API 数据为 taskStore 所需格式
   const formatForStore = (rawList) =>
-    rawList.map(t => ({
+    rawList
+      .filter(t => t.status !== '已取消')   // ★ 在转换阶段就丢弃已取消
+      .map(t => ({
       id: String(t.id),
       title: t.task_content,
       description: t.description || '',
@@ -1159,6 +1170,23 @@ onUnmounted(() => {
     gap: 12px;
     align-items: center;
   }
+}
+
+/* ★ 统计范围说明条 */
+.stats-scope-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #606266;
+  background: #f0f9eb;
+  border: 1px solid #c2e7b0;
+  border-radius: 8px;
+  padding: 9px 16px;
+  margin-bottom: 20px;
+ 
+  .el-icon { color: #67C23A; flex-shrink: 0; }
+  strong { color: #303133; font-weight: 600; }
 }
 
 .overview-cards {
